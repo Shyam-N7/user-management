@@ -64,7 +64,7 @@ def register(user: schemas.ClientCreate, db: Session = Depends(get_db_users)):
 @app.post('/login')
 def login(user: schemas.UserLogin, db: Session = Depends(get_db_users)):
     authenticated =  crud.authenticate_client(db, user)
-    access_token = create_access_token(data = {"sub": authenticated.email})
+    # access_token = create_access_token(data = {"sub": authenticated.email})
 
 @app.get('/square/{number}')
 def get_square(number: int, db: Session = Depends(get_db_main)):
