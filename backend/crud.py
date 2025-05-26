@@ -2,9 +2,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 from sqlalchemy.exc import DBAPIError
 # from models import User
-from schemas import UserCreate, UserResponse, UserUpdate
+from schemas import UserCreate, UserResponse, UserUpdate, ClientCreate, ClientResponse, UserLogin, Token
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
+from passlib.hash import bcrypt
 
 def create_user(db: Session, user: UserCreate):
     # db_user = User(name=user.name, email=user.email)
@@ -66,6 +67,50 @@ def delete_user(db: Session, user_id:int):
     if not user_res:
         raise HTTPException(status_code=404, detail="Employee not found")
     return UserResponse(**user_res)
+
+
+# CLIENTS LOGIN AND REGISTER
+
+def create_client(db: Session, user: ClientCreate):
+    # CHECK EMAIL IF IT ALREADY EXISTS
+    check_email = text("SELECT id FROM clients WHERE email = :email")
+    try:
+        check_email_result = db.execute(check_email, {"email": user.email}).first()
+        if check_email_result:
+            raise HTTPException(status_code=400, detail="Email already registered!") 
+        
+        # INSERT USER
+        hashed_password = bcrypt.hash(user.password)
+        query = text("""
+            INSERT INTO clients (firstname, lastname, email, hashed_password)
+            VALUES (:firstname, :lastname, :email, :hashed_password)
+            RETURNING id, firstname, lastname, email
+        """)
+        result = db.execute(query, {
+            "firstname": user.firstname,
+            "lastname": user.lastname,
+            "email": user.email,
+            "hashed_password": hashed_password
+        })
+        db.commit()
+        client_res = result.mappings().first()
+        return ClientResponse(**client_res)
+    
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+    
+def authenticate_client(db: Session, user: UserLogin):
+    query = text("SELECT * FROM clients WHERE email = :email")
+    try:
+        result = db.execute(query, {"email": user.email}).mappings().first()
+        if not result or not bcrypt.verify(user.password, result["hashed_password"]):
+            raise HTTPException(status_code = 401, detail = "Invalid email or password")
+        return ClientResponse(id = result["id"], firstname = result["firstname"], lastname = result["lastname"], email = result["email"], detail = "Login Successful")
+    
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}") 
 
 def get_square(db: Session, number:int):
     query = text("SELECT square(:number)")

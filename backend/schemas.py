@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 
 class UserCreate(BaseModel):
@@ -37,3 +37,26 @@ class AddEmployee(BaseModel):
     
 class SalaryIncrease(BaseModel):
     increase_percent: int
+    
+class ClientCreate(BaseModel):
+    firstname: str
+    lastname: str
+    email: EmailStr
+    password: str
+    
+class ClientResponse(BaseModel):
+    id: int
+    firstname: str
+    lastname: str
+    email: EmailStr
+    
+    class Config:
+        orm_mode = True
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+    
+class Token(BaseModel):
+    access_token: str
+    token_type: str

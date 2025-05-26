@@ -1,0 +1,158 @@
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #f5f7fa;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-width: 400px;
+    width: 100%;
+    background-color: #fff;
+    padding: 30px 20px;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.title {
+    font-size: 28px;
+    color: royalblue;
+    font-weight: 600;
+    letter-spacing: -1px;
+    position: relative;
+    padding-left: 30px;
+    display: flex;
+    align-items: center;
+}
+
+.title::before,
+.title::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    border-radius: 50%;
+    background-color: royalblue;
+    width: 16px;
+    height: 16px;
+}
+
+.title::before {
+    width: 18px;
+    height: 18px;
+}
+
+.title::after {
+    position: absolute;
+    left: 1.25px;
+    top: 7.75px;
+    animation: pulse 1s linear infinite;
+}
+
+@keyframes pulse {
+    from {
+        transform: scale(0.9);
+        opacity: 1;
+    }
+
+    to {
+        transform: scale(1.8);
+        opacity: 0;
+    }
+}
+
+.message,
+.signin {
+    color: rgba(88, 87, 87, 0.822);
+    font-size: 14px;
+}
+
+.signin {
+    text-align: center;
+}
+
+.signin a {
+    color: royalblue;
+    text-decoration: none;
+}
+
+.signin a:hover {
+    text-decoration: underline;
+}
+
+.flex {
+    display: flex;
+    gap: 10px;
+}
+
+.form label {
+    position: relative;
+    flex: 1;
+    display: flex;
+}
+
+.input {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 16px;
+    border: 1px solid rgba(105, 105, 105, 0.397);
+    border-radius: 10px;
+    outline: none;
+    background: transparent;
+}
+
+.form label span {
+    position: absolute;
+    left: 12px;
+    top: 45%;
+    transform: translateY(-75%);
+    font-size: 0.95em;
+    color: grey;
+    pointer-events: none;
+    transition: all 0.25s ease;
+    opacity: 1;
+}
+
+.input:focus+span,
+.input:not(:placeholder-shown)+span {
+    top: 2px;
+    left: 8px;
+    font-size: 0.65em;
+    color: royalblue;
+    opacity: 0.85;
+    text-decoration: underline;
+}
+
+.submit {
+    background-color: royalblue;
+    color: white;
+    border: none;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.submit:hover {
+    background-color: rgb(56, 90, 194);
+}
+
+.icon {
+    display: flex;
+    justify-self: flex-end;
+    align-items: center;    
+    right: 0;
+    font-size: 1.2em;
+    background-color: transparent;
+    color: rgb(56, 90, 194);
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.icon:hover{
+    background-color: transparent;
+}
