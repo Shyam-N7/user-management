@@ -6,6 +6,7 @@ from database import engine_main, engine_users
 from dependencies import get_db_main, get_db_users
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Body
+from auth import create_access_token
 
 app = FastAPI()
 
@@ -64,7 +65,18 @@ def register(user: schemas.ClientCreate, db: Session = Depends(get_db_users)):
 @app.post('/login')
 def login(user: schemas.UserLogin, db: Session = Depends(get_db_users)):
     authenticated =  crud.authenticate_client(db, user)
-    # access_token = create_access_token(data = {"sub": authenticated.email})
+    access_token = create_access_token(data = {"sub": authenticated.id})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": authenticated.id,
+            "firstname": authenticated.firstname,
+            "lastname": authenticated.lastname,
+            "email": authenticated.email
+        },
+        "message": authenticated.detail
+    }
 
 @app.get('/square/{number}')
 def get_square(number: int, db: Session = Depends(get_db_main)):

@@ -209,12 +209,28 @@ function Home() {
         }
     };
 
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/';
+    };
+
     return (
         <>
             <ToastContainer transition={Slide} closeButton={false} limit={3}>
             </ToastContainer>
             <div className="container">
-                <h2>User Management</h2>
+                <div className="main-title">
+                    <h2>User Management</h2>
+                </div>
+                <div className="logout-button" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                        className="logout"
+                        onClick={handleLogout}
+                    >
+                        Logout
+                    </button>
+                </div>
                 <form onSubmit={editId ? updateUser : createUser}>
                     <input
                         type="text"
@@ -237,12 +253,12 @@ function Home() {
                             <li key={user.id}>
                                 <div className="users-list">
                                     <div className="list-body">
-                                        <span style={{width: "80px"}}>{user.name}</span>
+                                        <span style={{ width: "80px" }}>{user.name}</span>
                                         <span> ({user.email})</span>
                                     </div>
-                                    <div className="buttons" style={{display: "flex", flexDirection: "row", flexWrap: "wrap"}}>
+                                    <div className="buttons" style={{ display: "flex", flexDirection: "row", flexWrap: "wrap" }}>
                                         <button
-                                            style={{width: "66.25px"}}
+                                            style={{ width: "66.25px" }}
                                             onClick={() => {
                                                 setEditId(user.id);
                                                 setName(user.name);

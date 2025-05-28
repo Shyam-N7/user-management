@@ -49,9 +49,10 @@ class ClientResponse(BaseModel):
     firstname: str
     lastname: str
     email: EmailStr
+    detail: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserLogin(BaseModel):
     email: EmailStr
