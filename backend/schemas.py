@@ -65,7 +65,7 @@ class Token(BaseModel):
 # Schema for `testing` table
 class TestingSchema(BaseModel):
     id: Optional[int]
-    image_url: Optional[str]
+    img_url: Optional[str]
     name: str
     role: str
     email: EmailStr
