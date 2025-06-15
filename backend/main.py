@@ -154,3 +154,22 @@ def increase_all_salaries(increase: schemas.SalaryIncrease, db: Session = Depend
     if increase.increase_percent< 0:
         raise HTTPException(status_code=400, detail="Increase percent cannot be negative")
     return crud.increase_all_salaries(db, increase.increase_percent)
+
+@app.get("/testing", response_model=List[schemas.TestingSchema])
+def read_testing(db: Session = Depends(get_db_main)):
+    return crud.get_all_testing(db)
+
+
+@app.get("/testingtwo", response_model=List[schemas.TestingTwoSchema])
+def read_testingtwo(db: Session = Depends(get_db_main)):
+    return crud.get_all_testingtwo(db)
+
+
+@app.get("/insights", response_model=List[schemas.InsightsSchema])
+def read_insights(db: Session = Depends(get_db_main)):
+    return crud.get_all_insights(db)
+
+
+@app.get("/communities", response_model=List[schemas.CommunitiesSchema])
+def read_communities(db: Session = Depends(get_db_main)):
+    return crud.get_all_communities(db)

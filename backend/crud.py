@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 from sqlalchemy.exc import DBAPIError
 # from models import User
-from schemas import UserCreate, UserResponse, UserUpdate, ClientCreate, ClientResponse, UserLogin
+from schemas import UserCreate, UserResponse, UserUpdate, ClientCreate, ClientResponse, UserLogin, TestingSchema, TestingTwoSchema, InsightsSchema, CommunitiesSchema
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from auth import hash_password, verify_password
@@ -245,3 +245,35 @@ def increase_all_salaries(db: Session, increase_percent: int):
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+    
+    
+# Get all records from `testing` table
+def get_all_testing(db: Session):
+    query = text("SELECT id, image_url, name, role, email FROM testing")
+    result = db.execute(query)
+    records = result.mappings().all()
+    return [TestingSchema(**row) for row in records]
+
+
+# Get all records from `testingtwo` table
+def get_all_testingtwo(db: Session):
+    query = text("SELECT id, img_url, name, date, time, location, request, role FROM testingtwo")
+    result = db.execute(query)
+    records = result.mappings().all()
+    return [TestingTwoSchema(**row) for row in records]
+
+
+# Get all records from `insights` table
+def get_all_insights(db: Session):
+    query = text("SELECT id, heading, subheading FROM insights")
+    result = db.execute(query)
+    records = result.mappings().all()
+    return [InsightsSchema(**row) for row in records]
+
+
+# Get all records from `communities` table
+def get_all_communities(db: Session):
+    query = text("SELECT id, name, logo, privacy, members, date, notification FROM communities")
+    result = db.execute(query)
+    records = result.mappings().all()
+    return [CommunitiesSchema(**row) for row in records]

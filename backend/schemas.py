@@ -61,3 +61,53 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    
+# Schema for `testing` table
+class TestingSchema(BaseModel):
+    id: Optional[int]
+    image_url: Optional[str]
+    name: str
+    role: str
+    email: EmailStr
+
+    class Config:
+        from_attributes = True
+
+
+# Schema for `testingtwo` table
+class TestingTwoSchema(BaseModel):
+    id: Optional[int]
+    img_url: Optional[str]
+    name: str
+    date: str  # Format like "Nov 5"
+    time: str  # Format like "09.00am"
+    location: str
+    request: str
+    role: str
+
+    class Config:
+        from_attributes = True
+
+
+# Schema for `insights` table
+class InsightsSchema(BaseModel):
+    id: Optional[int]
+    heading: str
+    subheading: str
+
+    class Config:
+        from_attributes = True
+
+
+# Schema for `communities` table
+class CommunitiesSchema(BaseModel):
+    id: Optional[int]
+    name: str
+    logo: Optional[str]
+    privacy: str
+    members: str
+    date: str
+    notification: Optional[int]
+
+    class Config:
+        from_attributes = True
