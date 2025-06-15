@@ -7,5 +7,4 @@ pydantic[email]
 python-dotenv
 passlib[bcrypt]
 bcrypt==3.2.0
-python-jose==3.3.0
-cryptography==41.0.7
+PyJWT==2.8.0
