@@ -7,12 +7,13 @@ from dependencies import get_db_main, get_db_users
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Body
 from auth import create_access_token
+from typing import List
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["http://localhost:3000"],  # Allow all origins
     allow_credentials=True,
     allow_headers=["*"],
     allow_methods=["*"]
@@ -38,7 +39,7 @@ def get_user(user_id: int, db: Session = Depends(get_db_main)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-@app.get('/users', response_model=list[schemas.UserResponse])
+@app.get('/users', response_model=List[schemas.UserResponse])
 def get_all_users(db: Session = Depends(get_db_main)):
     users = crud.get_all_users(db)
     return users

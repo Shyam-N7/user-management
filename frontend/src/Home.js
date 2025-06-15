@@ -5,7 +5,7 @@ import { Slide, toast, ToastContainer } from 'react-toastify';
 import SalaryLogsComponent from './SalaryLogsComponent';
 
 
-const API_URL = "http://13.60.65.76:8000";
+const API_URL = "http://localhost:8000";
 
 const initialState = {
     num1: "",
@@ -56,7 +56,7 @@ function Home() {
         fetchUsers();
     }, []);
 
-    const API_URL_CRUD = "http://13.60.65.76/users";
+    const API_URL_CRUD = "http://localhost:8000/users";
 
     const fetchUsers = async () => {
         try {
