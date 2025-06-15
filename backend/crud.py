@@ -249,7 +249,7 @@ def increase_all_salaries(db: Session, increase_percent: int):
     
 # Get all records from `testing` table
 def get_all_testing(db: Session):
-    query = text("SELECT id, image_url, name, role, email FROM testing")
+    query = text("SELECT id, img_url, name, role, email FROM testing")
     result = db.execute(query)
     records = result.mappings().all()
     return [TestingSchema(**row) for row in records]
