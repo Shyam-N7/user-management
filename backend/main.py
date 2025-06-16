@@ -13,7 +13,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://user-management-lovat.vercel.app"],  # Allow all origins
+    allow_origins=["http://localhost:3000", "https://user-management-lovat.vercel.app", "https://student-portal-pearl.vercel.app"],  # Allow all origins
     allow_credentials=True,
     allow_headers=["*"],
     allow_methods=["*"]
