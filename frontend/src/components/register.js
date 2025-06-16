@@ -43,7 +43,7 @@ const RegisterPage = () => {
         setLoading(true);
 
         try{
-            const response = await fetch('http://localhost:8000/register', {
+            const response = await fetch('https://user-management-wucu.onrender.com/register', {
                 method: 'POST',
                 headers: {'Content-type': 'application/json'},
                 body: JSON.stringify({
@@ -157,7 +157,7 @@ const RegisterPage = () => {
                 </label>
 
                 <button className="submit-button" disabled={loading}>
-                    {loading ? 'Registering...' : 'Register'}
+                    {loading ? <div className="spinner"></div> : 'Register'}
                 </button>
                 {message && <p className='message-status'>{message}</p>}
                 <p className="signin">

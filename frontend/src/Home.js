@@ -5,7 +5,7 @@ import { Slide, toast, ToastContainer } from 'react-toastify';
 import SalaryLogsComponent from './SalaryLogsComponent';
 
 
-const API_URL = "http://localhost:8000";
+const API_URL = "https://user-management-wucu.onrender.com";
 
 const initialState = {
     num1: "",
@@ -51,14 +51,28 @@ function Home() {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [editId, setEditId] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [loadingAdd, setLoadingAdd] = useState(false);
+    const [loadingUpdate, setLoadingUpdate] = useState(false);
+    const [loadingSum, setLoadingSum] = useState(false);
+    const [loadingSquare, setLoadingSquare] = useState(false);
+    const [loadingEvenOdd, setLoadingEvenOdd] = useState(false);
+    const [loadingTemperature, setLoadingTemperature] = useState(false);
+    const [loadingSalThres, setLoadingSalThres] = useState(false);
+    const [loadingSalary, setLoadingSalary] = useState(false);
+    const [loadingBonus, setLoadingBonus] = useState(false);
+    const [loadingUpdateSal, setLoadingUpdateSal] = useState(false);
+    const [loadingAddEmp, setLoadingAddEmp] = useState(false);
+    const [loadingSalaryIncreasePercent, setLoadingSalaryIncreasePercent] = useState(false);
 
     useEffect(() => {
         fetchUsers();
     }, []);
 
-    const API_URL_CRUD = "http://localhost:8000/users";
+    const API_URL_CRUD = "https://user-management-wucu.onrender.com/users";
 
     const fetchUsers = async () => {
+        setLoading(true);
         try {
             const response = await axios.get(`${API_URL_CRUD}`);
             console.log("API Response:", response.data); // Debugging
@@ -75,6 +89,8 @@ function Home() {
         } catch (error) {
             console.error("Error fetching users:", error);
             setUsers([]); // Ensure it's always an array
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -95,7 +111,7 @@ function Home() {
             toast.warn("Please fill in all fields.");
             return;
         }
-
+        setLoadingAdd(true);
         try {
             const response = await axios.post(`${API_URL_CRUD}`, { name, email });
             setUsers([...users, response.data]);
@@ -108,11 +124,14 @@ function Home() {
             } else {
                 toast.error("Error creating user.");
             }
+        } finally {
+            setLoadingAdd(false);
         }
     };
 
     const updateUser = async (e) => {
         e.preventDefault();
+        setLoadingUpdate(true);
         if (!name && !email) {
             toast.warn("Please fill in at least one field.");
             return;
@@ -127,6 +146,8 @@ function Home() {
             toast.success("User updated successfully!");
         } catch (error) {
             toast.error("Error updating user.");
+        } finally {
+            setLoadingUpdate(false);
         }
     };
 
@@ -146,12 +167,29 @@ function Home() {
         } catch (error) {
             console.error("Error deleting user:", error);
             toast.error("Failed to delete user. Please try again.");
+        } finally {
         }
     };
 
     const [state, dispatch] = useReducer(reducer, initialState);
 
     const postData = async (endpoint, data, resultField) => {
+        switch (endpoint) {
+            case 'add_numbers':
+                setLoadingSum(true);
+                break;
+            case 'celsius_to_fahrenheit':
+                setLoadingTemperature(true);
+                break;
+            case 'add_employee':
+                setLoadingAddEmp(true);
+                break;
+            case 'increase_all_salaries':
+                setLoadingSalaryIncreasePercent(true);
+                break;
+            default:
+                break;
+        }
         try {
             const response = await axios.post(`${API_URL}/${endpoint}`, data,
                 {
@@ -165,10 +203,45 @@ function Home() {
         } catch (error) {
             console.error("API Error:", error);
             toast.error("API Error:", error);
+        } finally {
+            switch (endpoint) {
+                case 'add_numbers':
+                    setLoadingSum(false);
+                    break;
+                case 'celsius_to_fahrenheit':
+                    setLoadingTemperature(false);
+                    break;
+                case 'add_employee':
+                    setLoadingAddEmp(false);
+                    break;
+                case 'increase_all_salaries':
+                    setLoadingSalaryIncreasePercent(false);
+                    break;
+                default:
+                    break;
+            }
         }
     }
 
     const fetchData = async (endpoint, params, resultField) => {
+        const baseEndpoint = endpoint.split('/')[0];
+        switch (baseEndpoint) {
+            case 'square':
+                setLoadingSquare(true);
+                break;
+            case 'check_even_odd':
+                setLoadingEvenOdd(true);
+                break;
+            case 'get_employee_salary':
+                setLoadingSalary(true);
+                break;
+            case 'calculate_bonus':
+                setLoadingBonus(true);
+                break;
+            default:
+                break;
+        }
+
         try {
             const response = await axios.get(`${API_URL}/${endpoint}`, { params },
                 {
@@ -181,6 +254,23 @@ function Home() {
             return response.data;
         } catch (error) {
             console.error("Error:", error);
+        } finally {
+            switch (baseEndpoint) {
+                case 'square':
+                    setLoadingSquare(false);
+                    break;
+                case 'check_even_odd':
+                    setLoadingEvenOdd(false);
+                    break;
+                case 'get_employee_salary':
+                    setLoadingSalary(false);
+                    break;
+                case 'calculate_bonus':
+                    setLoadingBonus(false);
+                    break;
+                default:
+                    break;
+            }
         }
     }
 
@@ -194,6 +284,7 @@ function Home() {
     // }
 
     const putData = async (endpoint, data, resultField) => {
+        setLoadingUpdateSal(true);
         try {
             const response = await axios.put(`${API_URL}/${endpoint}`, data, {
                 headers: { "Content-Type": "application/json" }
@@ -206,6 +297,8 @@ function Home() {
             return response.data;
         } catch (error) {
             console.error("API Error:", error);
+        } finally {
+            setLoadingUpdateSal(false);
         }
     };
 
@@ -244,7 +337,13 @@ function Home() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                     />
-                    <button type="submit">{editId ? "Update" : "Add"}</button>
+                    <button type="submit" className="add-update-button" disabled={loading}>
+                        {editId ? (
+                            loadingUpdate ? <div className="spinner"></div> : "Update"
+                        ) : (
+                            loadingAdd ? <div className="spinner"></div> : "Add"
+                        )}
+                    </button>
                 </form>
                 <ul className="users-container">
                     <h2 style={{ display: "flex" }}>Users:</h2>
@@ -258,6 +357,7 @@ function Home() {
                                     </div>
                                     <div className="buttons" style={{ display: "flex", flexDirection: "row", flexWrap: "wrap" }}>
                                         <button
+                                            disabled={loading}
                                             style={{ width: "66.25px" }}
                                             onClick={() => {
                                                 setEditId(user.id);
@@ -267,7 +367,7 @@ function Home() {
                                         >
                                             Edit
                                         </button>
-                                        <button onClick={() => {
+                                        <button disabled={loading} onClick={() => {
                                             console.log("Attempting to delete user with ID:", user.id); // Debugging
                                             deleteUser(user.id);
                                         }}>
@@ -278,7 +378,7 @@ function Home() {
                             </li>
                         ))
                     ) : (
-                        <li>No users found.</li>
+                        <li>{loading ? <div className="spinner"></div> : 'No users found.'}</li>
                     )}
                 </ul>
                 <h2><u>Postgre Functions</u></h2>
@@ -304,7 +404,7 @@ function Home() {
                         }
                         await postData("add_numbers", { a: state.num1, b: state.num2 }, "sumResult")
                     }}>
-                        Get Sum
+                        {loadingSum ? <div className="spinner"></div> : 'Get Sum'}
                     </button>
                     {state.sumResult && state.sumResult.sum !== undefined ? (
                         <p>Sum: {state.sumResult.sum}</p>
@@ -320,14 +420,14 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "squareNumber", value: e.target.value })}
                         placeholder="Enter a number"
                     />
-                    <button onClick={() => {
+                    <button disabled={loading} onClick={() => {
                         if (!state.squareNumber) {
                             toast.warning("Provide a valid input!", { position: "top-center" });
                             return;
                         }
                         fetchData(`square/${state.squareNumber}`, {}, "squareResult")
                     }}>
-                        Get Square
+                        {loadingSquare ? <div className="spinner"></div> : 'Get Square'}
                     </button>
                     {state.squareResult && state.squareResult.square !== undefined ? (
                         <p>Square: {state.squareResult.square}</p>
@@ -343,14 +443,14 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "checkNumber", value: e.target.value })}
                         placeholder="Enter a number"
                     />
-                    <button onClick={() => {
+                    <button disabled={loading} onClick={() => {
                         if (!state.checkNumber) {
                             toast.warning("Provide a valid input!", { position: "top-center" });
                             return;
                         }
                         fetchData(`check_even_odd/${state.checkNumber}`, {}, "evenOddResult")
                     }}>
-                        Check number
+                        {loadingEvenOdd ? <div className="spinner"></div> : 'Check Number'}
                     </button>
                     {state.evenOddResult && state.evenOddResult.result !== undefined ? (
                         <p>The number is : {state.evenOddResult.result}</p>
@@ -366,14 +466,14 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "celsius", value: e.target.value })}
                         placeholder="Enter celsius value"
                     />
-                    <button onClick={async () => {
+                    <button disabled={loading} onClick={async () => {
                         if (!state.celsius) {
                             toast.warning("Provide a valid input!", { position: "top-center" });
                             return;
                         }
                         await postData("celsius_to_fahrenheit", { celsius: state.celsius }, "farenheitResult")
                     }}>
-                        Convert to Farenheit
+                        {loadingTemperature ? <div className="spinner"></div> : 'Convert to Farenheit'}
                     </button>
                     {state.farenheitResult && state.farenheitResult.farenheit !== undefined ? (
                         <p>The converted result is : {state.farenheitResult.farenheit} ° F</p>
@@ -389,7 +489,8 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "salaryThreshold", value: e.target.value })}
                         placeholder="Enter salary threshold"
                     />
-                    <button onClick={async () => {
+                    <button disabled={loading} onClick={async () => {
+                        setLoadingSalThres(true);
                         if (!state.salaryThreshold) {
                             toast.warning("Provide a valid input!", { position: "top-center" });
                             return;
@@ -404,9 +505,11 @@ function Home() {
                         } catch (error) {
                             console.error("API Error:", error); // Log full error to check details
                             toast.error("Error fetching employees. Please try again.", { position: "top-center" });
+                        } finally {
+                            setLoadingSalThres(false);
                         }
                     }}>
-                        Get result
+                        {loadingSalThres ? <div className="spinner"></div> : 'Get result'}
                     </button>
                     <ul>
                         {Array.isArray(state.highSalaryEmployees) && state.highSalaryEmployees.length > 0 ? (
@@ -426,7 +529,7 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "empId", value: e.target.value })}
                         placeholder="Enter employee id"
                     />
-                    <button onClick={async () => {
+                    <button disabled={loading} onClick={async () => {
                         if (!state.empId) {
                             toast.warning("Provide enter a valid employee id!", { position: "top-center" });
                             return;
@@ -437,7 +540,7 @@ function Home() {
                             toast.error("Employee not found!", { position: "top-center" });
                         }
                     }}>
-                        Get salary
+                        {loadingSalary ? <div className="spinner"></div> : 'Get salary'}
                     </button>
                     <ul>
                         {state.employeeSalary ? (
@@ -459,7 +562,7 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "emp_id_bonus", value: e.target.value })}
                         placeholder="Enter employee id"
                     />
-                    <button onClick={async () => {
+                    <button disabled={loading} onClick={async () => {
                         if (!state.emp_id_bonus) {
                             toast.warning("Provide enter a valid employee id!", { position: "top-center" });
                             return;
@@ -470,7 +573,7 @@ function Home() {
                             toast.error("Employee not found!", { position: "top-center" });
                         }
                     }}>
-                        Get bonus (10% bonus)
+                        {loadingBonus ? <div className="spinner"></div> : 'Get bonus (10% bonus)'}
                     </button>
                     <ul>
                         {state.bonus ? (
@@ -501,14 +604,14 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "newSalary", value: e.target.value })}
                         placeholder="Enter new salary"
                     />
-                    <button onClick={async () => {
+                    <button disabled={loading} onClick={async () => {
                         if (!state.update_emp_id || !state.newSalary) {
                             toast.warning("Please enter valid employee ID and new salary!", { position: "top-center" });
                             return;
                         }
                         await putData(`update_salary/${state.update_emp_id}`, { new_salary: parseInt(state.newSalary) }, "salaryUpdateResponse");
                     }}>
-                        Update Salary
+                        {loadingUpdateSal ? <div className="spinner"></div> : 'Update Salary'}
                     </button>
                     {state.salaryUpdateResponse !== null && <p>{state.salaryUpdateResponse.message}</p>}
                 </div>
@@ -542,14 +645,14 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "emp_salary", value: e.target.value })}
                         placeholder="Enter salary"
                     />
-                    <button onClick={async () => {
+                    <button disabled={loading} onClick={async () => {
                         if (!state.emp_name || !state.emp_salary) {
                             toast.warning("Name and salary fields cannot be empty!", { position: "top-center" });
                             return;
                         }
                         await postData("add_employee", { emp_name: state.emp_name, emp_salary: parseInt(state.emp_salary) }, "addEmployeeResponse")
                     }}>
-                        Add Employee
+                        {loadingAddEmp ? <div className="spinner"></div> : 'Add Employee'}
                     </button>
                     {state.addEmployeeResponse && state.addEmployeeResponse !== null && <p>{state.addEmployeeResponse.message}</p>}
                 </div>
@@ -561,14 +664,14 @@ function Home() {
                         onChange={(e) => dispatch({ type: "SET_INPUT", field: "salaryIncreasePercent", value: e.target.value })}
                         placeholder="Enter %"
                     />
-                    <button onClick={async () => {
+                    <button disabled={loading} onClick={async () => {
                         if (!state.salaryIncreasePercent) {
                             toast.warning("Please enter valid percentage!", { position: "top-center" });
                             return;
                         }
                         await postData("increase_all_salaries", { increase_percent: parseInt(state.salaryIncreasePercent, 10) }, "salaryIncreasePercentResponse");
                     }}>
-                        Increase salary
+                        {loadingSalaryIncreasePercent ? <div className="spinner"></div> : 'Increase salary'}
                     </button>
                     {state.salaryIncreasePercentResponse && state.salaryIncreasePercentResponse !== null && <p>{state.salaryIncreasePercentResponse.message}</p>}
                 </div>

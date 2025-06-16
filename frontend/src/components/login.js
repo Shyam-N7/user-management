@@ -13,18 +13,19 @@ const LoginPage = () => {
     const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
-        try{
+        setLoading(true);
+        try {
             const response = await fetch('https://user-management-wucu.onrender.com/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({email, password}),
+                body: JSON.stringify({ email, password }),
             });
 
             const data = await response.json();
 
-            if(!response.ok){
+            if (!response.ok) {
                 throw new Error('Invalid email or password.');
             }
 
@@ -35,7 +36,7 @@ const LoginPage = () => {
             toast.success(data.message);
             window.location.href = '/home'
 
-        } catch(err){
+        } catch (err) {
             setError(err.message);
         } finally {
             setLoading(false);
@@ -49,11 +50,11 @@ const LoginPage = () => {
                 <p className="message">Login now and get full access to our app.</p>
 
                 <label>
-                    <input 
-                        required 
-                        placeholder=" " 
-                        type="email" 
-                        className="input" 
+                    <input
+                        required
+                        placeholder=" "
+                        type="email"
+                        className="input"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                     />
@@ -68,7 +69,7 @@ const LoginPage = () => {
                         className="input"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                     />
+                    />
                     <span>Password</span>
                     <button
                         type='button'
@@ -79,10 +80,9 @@ const LoginPage = () => {
                     </button>
                 </label>
 
-                <button type='submit' className="submit-button" disabled={loading}>{loading ? 'Please wait...' : 'Login'}</button>
+                <button type='submit' className="submit-button" disabled={loading}>{loading ? <div className="spinner"></div> : 'Login'}</button>
 
                 {error && <p className='error'>{error}</p>}
-                {loading && <p className='loading'>Logging in...</p>}
 
                 <p className="signin">
                     Don't have an account? <a href="/register">Create One</a>

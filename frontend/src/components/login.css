@@ -127,7 +127,10 @@
 }
 
 .submit-button {
-    background-color:#0056b3;;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #0056b3;
     color: white;
     border: none;
     padding: 12px;
