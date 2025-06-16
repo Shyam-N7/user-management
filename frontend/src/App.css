@@ -220,3 +220,88 @@ li {
     transform: rotate(360deg);
   }
 }
+
+:root {
+  --toastify-color-light: #fff !important;
+  --toastify-color-dark: #121212 !important;
+  --toastify-color-info: #2f7bf7 !important;
+  --toastify-color-success: #33f525 !important;
+  --toastify-color-warning: #f1c40f;
+  --toastify-color-error: #d04545 !important;
+  --toastify-color-transparent: #d04545;
+
+  --toastify-toast-width: 280px !important;
+  --toastify-toast-min-height: 64px;
+  --toastify-font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --toastify-z-index: 9999;
+}
+
+
+.Toastify__toast--success .Toastify__toast-icon {
+  display: flex;
+  align-items: center;
+  font-size: 28px !important;
+  width: 20px !important;
+  height: 20px !important;
+  background: transparent !important;
+}
+
+.Toastify__toast-icon svg {
+  background: transparent;
+}
+
+.Toastify__toast--error .Toastify__toast-icon {
+  display: flex;
+  align-items: center;
+  font-size: 28px !important;
+  width: 20px !important;
+  height: 20px !important;
+  background: transparent !important;
+}
+
+.Toastify__toast--warning .Toastify__toast-icon {
+  display: flex;
+  align-items: center;
+  font-size: 28px !important;
+  width: 20px !important;
+  height: 20px !important;
+  background: transparent !important;
+}
+
+.Toastify__toast--success .Toastify__close-button svg {
+  color: #33f525 !important;
+  background: transparent !important;
+}
+
+.Toastify__toast--error .Toastify__close-button svg {
+  color: #d04545 !important;
+  background: transparent !important;
+}
+
+.Toastify__toast--warning .Toastify__close-button svg {
+  color: #f1c40f !important;
+  background: transparent !important;
+}
+
+.Toastify__close-button {
+  display: block !important;
+}
+
+.Toastify__toast--success .Toastify__close-button {
+  color: #33f525 !important;
+}
+
+.Toastify__toast--error .Toastify__close-button {
+  color: #d04545 !important;
+}
+
+.Toastify__toast--warning .Toastify__close-button {
+  color: #f1c40f !important;
+}
+
+.Toastify__close-button {
+  display: block !important;
+  background: transparent !important;
+  color: #000 !important;
+  /* fallback color */
+}

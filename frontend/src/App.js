@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from 'react';
 import "./App.css";
-import { ToastContainer } from 'react-toastify';
+import { Slide, ToastContainer } from 'react-toastify';
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import ProtectedRoute from "./components/protectRoute";
 import PageNotFound from "./components/PageFourOFour";
@@ -13,7 +13,7 @@ const App = () => {
   return (
     <>
       <div className="App">
-        <ToastContainer></ToastContainer>
+        <ToastContainer position="top-center" transition={Slide}></ToastContainer>
         <BrowserRouter>
           <Suspense fallback={<div className="spinner"></div>}></Suspense>
           <Routes>
