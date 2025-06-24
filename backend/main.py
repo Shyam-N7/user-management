@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 #Depends allows to pass dependencies
 from sqlalchemy.orm import Session
 import models, schemas, crud
@@ -6,8 +6,32 @@ from database import engine_main, engine_users
 from dependencies import get_db_main, get_db_users
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Body
+from fastapi.security import HTTPBearer
 from auth import create_access_token
 from typing import List
+import logging
+import re
+from collections import defaultdict
+from typing import Optional
+import time
+import hashlib
+from datetime import datetime, timedelta
+from auth import (create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+security = HTTPBearer()
+
+login_attempts = defaultdict(list)
+blocked_ips = defaultdict(float)
+
+MAX_LOGIN_ATTEMPTS = 5
+BLOCK_DURATION = 900
+ATTEMPT_WINDOW = 300
 
 app = FastAPI()
 
@@ -63,21 +87,140 @@ def delete_user(user_id: int, db: Session = Depends(get_db_main)):
 def register(user: schemas.ClientCreate, db: Session = Depends(get_db_users)):
     return crud.create_client(db, user)
 
+def validate_email(email: str) -> bool:
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def get_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    
+    return request.client.host
+
+def is_rate_limited(ip_address: str) -> tuple[bool, Optional[str]]:
+    current_time = time.time()
+    
+    # Check if IP is currently blocked
+    if ip_address in blocked_ips:
+        if current_time < blocked_ips[ip_address]:
+            remaining_time = int(blocked_ips[ip_address] - current_time)
+            return True, f"Too many failed attempts. Try again in {remaining_time} seconds"
+        else:
+            del blocked_ips[ip_address]
+            login_attempts[ip_address] = []
+    
+    # Clean old attempts
+    cutoff_time = current_time - ATTEMPT_WINDOW
+    login_attempts[ip_address] = [
+        attempt_time for attempt_time in login_attempts[ip_address] 
+        if attempt_time > cutoff_time
+    ]
+    
+    # Check if too many attempts
+    if len(login_attempts[ip_address]) >= MAX_LOGIN_ATTEMPTS:
+        blocked_ips[ip_address] = current_time + BLOCK_DURATION
+        logger.warning(f"IP {ip_address} blocked due to too many failed login attempts")
+        return True, f"Too many failed attempts. Blocked for {BLOCK_DURATION // 60} minutes"
+    
+    return False, None
+
+def record_failed_attempt(ip_address: str):
+    # Records failed login for rate limiting
+    current_time = time.time()
+    login_attempts[ip_address].append(current_time)
+    
+def sanitize_input(input_string: str) -> str:
+    if not input_string:
+        return ""
+    
+    # Remove dangerous characters
+    sanitized = input_string.replace('\x00', '').strip()
+    return sanitized[:255]
+
+def hash_sensitive_data(data: str) -> str:
+    return hashlib.sha256(data.encode()).hexdigest()[:8]
+
+
+
 @app.post('/login')
-def login(user: schemas.UserLogin, db: Session = Depends(get_db_users)):
-    authenticated =  crud.authenticate_client(db, user)
-    access_token = create_access_token(data = {"sub": authenticated.id})
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": authenticated.id,
-            "firstname": authenticated.firstname,
-            "lastname": authenticated.lastname,
-            "email": authenticated.email
-        },
-        "message": authenticated.detail
-    }
+def login(user: schemas.UserLogin, request: Request, db: Session = Depends(get_db_users)):
+    
+    client_ip = get_client_ip(request)
+    
+    # Step 2: Check rate limiting
+    is_limited, limit_message = is_rate_limited(client_ip)
+    if is_limited:
+        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
+        raise HTTPException(status_code=429, detail=limit_message)
+    
+    try:
+        
+        # Input valiation
+        if not user.email or not user.password:
+            logger.warning(f"Login attempt with missing credentials from IP: {client_ip}")
+            raise HTTPException(
+                status_code=400,
+                detail="Email and password are required"
+            )
+        
+        sanitized_email = sanitize_input(user.email.lower())
+        sanitized_password = sanitize_input(user.password)
+        
+        if not validate_email(sanitized_email):
+            logger.warning(f"Invalid email format attempted from IP: {client_ip}")
+            record_failed_attempt(client_ip)
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        
+        logger.info(f"Login attempt for email hash: {hash_sensitive_data(sanitized_email)} from IP: {client_ip}")
+        
+        sanitized_user = schemas.UserLogin(
+            email=sanitized_email,
+            password=sanitized_password
+        )
+        
+        authenticated =  crud.authenticate_client(db, sanitized_user)
+        if not authenticated:
+            record_failed_attempt(client_ip)
+            logger.warning(
+                f"Failed login attempt for email hash: {hash_sensitive_data(sanitized_email)} "
+                f"from IP: {client_ip}"
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+        access_token = create_access_token(data = {"sub": authenticated.id})
+        logger.info(f"Successful login for user ID: {authenticated.id} from IP: {client_ip}")
+        
+        if client_ip in login_attempts:
+            login_attempts[client_ip] = []
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "user": {
+                "id": authenticated.id,
+                "firstname": authenticated.firstname,
+                "lastname": authenticated.lastname,
+                "email": authenticated.email
+            },
+            "message": authenticated.detail,
+            "login_timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected login error for IP: {client_ip}, Error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred during login"
+        )
 
 @app.get('/square/{number}')
 def get_square(number: int, db: Session = Depends(get_db_main)):

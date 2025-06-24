@@ -10,6 +10,9 @@
 # ALGORITHM = os.getenv("ALGORITHM")
 # ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
+# if not SECRET_KEY:
+#     raise ValueError("SECRET_KEY environment variable is not set! Please check your .env file.")
+
 # password_content = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # def hash_password(password: str):
@@ -35,6 +38,9 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")  # Default to HS256
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY environment variable is not set! Please check your .env file.")
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
