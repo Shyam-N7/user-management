@@ -80,7 +80,13 @@ const LoginPage = () => {
                     </button>
                 </label>
 
-                <button type='submit' className="submit-button" disabled={loading}>{loading ? <div className="spinner"></div> : 'Login'}</button>
+                <button type='submit' className="submit-button" disabled={loading}>{loading ?
+                    <div class="loader">
+                        <div class="loading-text">
+                            Authenticating<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                        </div>
+                    </div>
+                    : 'Login'}</button>
 
                 {error && <p className='error'>{error}</p>}
 
