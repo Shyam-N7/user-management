@@ -83,13 +83,43 @@ def delete_user(user_id: int, db: Session = Depends(get_db_main)):
     return {"message": "User deleted successfully", "user": deleted_user}
 
 # USERS REGISTER AND LOGIN
-@app.post('/register', response_model = schemas.ClientResponse)
-def register(user: schemas.ClientCreate, db: Session = Depends(get_db_users)):
-    return crud.create_client(db, user)
+# @app.post('/register', response_model = schemas.ClientResponse)
+# def register(user: schemas.ClientCreate, db: Session = Depends(get_db_users)):
+#     return crud.create_client(db, user)
 
 def validate_email(email: str) -> bool:
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
+
+def validate_name_field(name: str, field_name: str) -> bool:
+    if not name or len(name.strip()) == 0:
+        return False
+    
+    if len(name) > 50:  # Reasonable length limit
+        return False
+    
+    # Allow only letters, spaces, hyphens, apostrophes
+    pattern = r'^[a-zA-Z\s\-]+$'
+    if not re.match(pattern, name):
+        return False
+    
+    return True
+
+def validate_password_strength(password: str) -> bool:
+    if len(password) < 8:
+        return False
+    if len(password) > 128:  # Prevent DoS
+        return False
+    if not re.search(r'[A-Z]', password):  # Uppercase
+        return False
+    if not re.search(r'[a-z]', password):  # Lowercase
+        return False
+    if not re.search(r'\d', password):     # Number
+        return False
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):  # Special char
+        return False
+    
+    return True
 
 def get_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("X-Forwarded-For")
@@ -145,6 +175,76 @@ def sanitize_input(input_string: str) -> str:
 def hash_sensitive_data(data: str) -> str:
     return hashlib.sha256(data.encode()).hexdigest()[:8]
 
+
+@app.post('/register', response_model=schemas.ClientResponse)
+def register(user: schemas.ClientCreate, request: Request, db: Session = Depends(get_db_users)):
+    
+    client_ip = get_client_ip(request)
+    
+    is_limited, limit_message = is_rate_limited(client_ip)
+    if is_limited:
+        logger.warning(f"Registration rate limit exceeded for IP: {client_ip}")
+        raise HTTPException(status_code=429, detail=limit_message)
+    
+    try:
+        if not user.email or not user.password or not user.firstname or not user.lastname:
+            logger.warning(f"Registration attempt with missing fields from IP: {client_ip}")
+            raise HTTPException(
+                status_code=400,
+                detail="All fields (firstname, lastname, email, password) are required"
+            )
+        
+        sanitized_firstname = sanitize_input(user.firstname)
+        sanitized_lastname = sanitize_input(user.lastname)
+        sanitized_email = sanitize_input(user.email.lower())
+        sanitized_password = sanitize_input(user.password)
+        
+        if not validate_email(sanitized_email):
+            logger.warning(f"Invalid email format in registration from IP: {client_ip}")
+            record_failed_attempt(client_ip)  # Count as failed attempt
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        
+        if not validate_name_field(sanitized_firstname, "First name"):
+            record_failed_attempt(client_ip)
+            raise HTTPException(status_code=400, detail="Invalid first name")
+            
+        if not validate_name_field(sanitized_lastname, "Last name"):
+            record_failed_attempt(client_ip)
+            raise HTTPException(status_code=400, detail="Invalid last name")
+        
+        if not validate_password_strength(sanitized_password):
+            record_failed_attempt(client_ip)
+            raise HTTPException(
+                status_code=400, 
+                detail="Password must be at least 8 characters with uppercase, lowercase, number, and special character"
+            )
+        
+        logger.info(f"Registration attempt for email hash: {hash_sensitive_data(sanitized_email)} from IP: {client_ip}")
+        
+        sanitized_user = schemas.ClientCreate(
+            firstname=sanitized_firstname,
+            lastname=sanitized_lastname,
+            email=sanitized_email,
+            password=sanitized_password
+        )
+        
+        new_client = crud.create_client(db, sanitized_user)
+        
+        logger.info(f"Successful registration for user ID: {new_client.id} from IP: {client_ip}")
+        
+        if client_ip in login_attempts:
+            login_attempts[client_ip] = []
+        
+        return new_client
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected registration error for IP: {client_ip}, Error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred during registration"
+        )
 
 
 @app.post('/login')
