@@ -156,9 +156,13 @@ const RegisterPage = () => {
                     {errors.passwordConfirm && <small className="error">{errors.passwordConfirm}</small>}
                 </label>
 
-                <button className="submit-button" disabled={loading}>
-                    {loading ? <div className="spinner"></div> : 'Register'}
-                </button>
+                <button type='submit' className="submit-button" disabled={loading}>{loading ?
+                    <div class="loader">
+                        <div class="loading-text">
+                            Registering<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                        </div>
+                    </div>
+                    : 'Register'}</button>
                 {message && <p className='message-status'>{message}</p>}
                 <p className="signin">
                     Already have an account? <a href="/">Login</a>
