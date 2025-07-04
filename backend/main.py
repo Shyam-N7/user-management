@@ -3,10 +3,12 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import models, schemas, crud
 from database import engine_main, engine_users
-from dependencies import get_db_main, get_db_users
+from dependencies import get_db_main, get_db_users, get_db_students
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Body
 from fastapi.security import HTTPBearer
+from fastapi.responses import JSONResponse
+import json
 from auth import create_access_token
 from typing import List
 import logging
@@ -15,8 +17,14 @@ from collections import defaultdict
 from typing import Optional
 import time
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime
 from auth import (create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES)
+from middleware.blacklist_token import TokenBlocklistMiddleware
+from routes.user import user_router
+from routes.students import student_router
+from routes.faculties import faculty_router
+import rate_limit
+from redis_connxn import r
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +50,12 @@ app.add_middleware(
     allow_headers=["*"],
     allow_methods=["*"]
 )
+
+app.add_middleware(TokenBlocklistMiddleware)
+
+app.include_router(user_router, prefix="/api")
+app.include_router(student_router, prefix="/api")
+app.include_router(faculty_router, prefix="/api")
 
 #Create db tables if they don't exist
 models.Base.metadata.create_all(bind=engine_main)
@@ -246,61 +260,76 @@ def register(user: schemas.ClientCreate, request: Request, db: Session = Depends
             detail="An error occurred during registration"
         )
 
-
 @app.post('/login')
 def login(user: schemas.UserLogin, request: Request, db: Session = Depends(get_db_users)):
     
     client_ip = get_client_ip(request)
-    
-    # Step 2: Check rate limiting
-    is_limited, limit_message = is_rate_limited(client_ip)
-    if is_limited:
-        logger.warning(f"Rate limit exceeded for IP: {client_ip}")
-        raise HTTPException(status_code=429, detail=limit_message)
+    print(f"[LOGIN] Starting login for IP: {client_ip}")
     
     try:
+        print(f"[LOGIN] Checking rate limit for IP: {client_ip}")
+        rate_limit.check_client_rate_limit(client_ip, r)
+        print(f"[LOGIN] Rate limit check passed for IP: {client_ip}")
         
-        # Input valiation
         if not user.email or not user.password:
-            logger.warning(f"Login attempt with missing credentials from IP: {client_ip}")
+            print(f"[LOGIN] Missing credentials for IP: {client_ip}")
+            rate_limit.record_client_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
             raise HTTPException(
                 status_code=400,
-                detail="Email and password are required"
+                detail=f"Email and password are required. {remaining} attempts remaining."
             )
         
         sanitized_email = sanitize_input(user.email.lower())
         sanitized_password = sanitize_input(user.password)
         
         if not validate_email(sanitized_email):
-            logger.warning(f"Invalid email format attempted from IP: {client_ip}")
-            record_failed_attempt(client_ip)
-            raise HTTPException(status_code=400, detail="Invalid email format")
+            print(f"[LOGIN] Invalid email format for IP: {client_ip}")
+            rate_limit.record_client_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid email format. {remaining} attempts remaining."
+            )
         
-        logger.info(f"Login attempt for email hash: {hash_sensitive_data(sanitized_email)} from IP: {client_ip}")
+        print(f"[LOGIN] Email validation passed, attempting authentication")
         
         sanitized_user = schemas.UserLogin(
             email=sanitized_email,
             password=sanitized_password
         )
         
-        authenticated =  crud.authenticate_client(db, sanitized_user)
-        if not authenticated:
-            record_failed_attempt(client_ip)
-            logger.warning(
-                f"Failed login attempt for email hash: {hash_sensitive_data(sanitized_email)} "
-                f"from IP: {client_ip}"
-            )
+        try:
+            authenticated = crud.authenticate_client(db, sanitized_user)
+            print(f"[LOGIN] Authentication successful: {authenticated}")
+            
+        except HTTPException as auth_error:
+            print(f"[LOGIN] Authentication failed for IP: {client_ip} - {auth_error.detail}")
+            rate_limit.record_client_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+            
             raise HTTPException(
                 status_code=401,
-                detail="Invalid email or password"
+                detail=f"Invalid email or password. {remaining} attempts remaining."
             )
-        access_token = create_access_token(data = {"sub": authenticated.id})
-        logger.info(f"Successful login for user ID: {authenticated.id} from IP: {client_ip}")
         
-        if client_ip in login_attempts:
-            login_attempts[client_ip] = []
+        if not authenticated:
+            print(f"[LOGIN] Authentication returned False for IP: {client_ip}")
+            rate_limit.record_client_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+            
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid email or password. {remaining} attempts remaining."
+            )
         
-        return {
+        print(f"[LOGIN] Authentication successful for IP: {client_ip}")
+        rate_limit.reset_failed_attempts(client_ip, r)
+        
+        access_token = create_access_token(data={"sub": authenticated.id})
+        
+        response = JSONResponse(content={
+            "message": authenticated.detail,
             "access_token": access_token,
             "token_type": "bearer",
             "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
@@ -310,16 +339,50 @@ def login(user: schemas.UserLogin, request: Request, db: Session = Depends(get_d
                 "lastname": authenticated.lastname,
                 "email": authenticated.email
             },
-            "message": authenticated.detail,
-            "login_timestamp": datetime.now().isoformat()
-        }
-    except HTTPException:
-        raise
+            "login_timestamp": datetime.now().isoformat(),
+            "success": True
+        })
+        
+        response.set_cookie(
+            key="token",
+            value=access_token,
+            httponly=True,
+            secure=False,
+            samesite="Lax",
+            path="/",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+
+        response.set_cookie(
+            key="user",
+            value=json.dumps({
+                "id": authenticated.id,
+                "firstname": authenticated.firstname,
+                "lastname": authenticated.lastname,
+                "email": authenticated.email
+            }),
+            httponly=False,
+            path="/",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+
+        return response
+    
+    except HTTPException as he:
+        if he.status_code == 429:
+            print(f"[LOGIN] Rate limit exceeded for IP: {client_ip}")
+        else:
+            print(f"[LOGIN] HTTPException caught: {he.detail}")
+        raise  # Re-raise the HTTPException
+        
     except Exception as e:
-        logger.error(f"Unexpected login error for IP: {client_ip}, Error: {str(e)}", exc_info=True)
+        print(f"[LOGIN] Unexpected error for IP: {client_ip}: {e}")
+        rate_limit.record_failed_attempt_redis(client_ip, r)
+        remaining = rate_limit.get_remaining_attempts(client_ip, r)
+        
         raise HTTPException(
             status_code=500,
-            detail="An error occurred during login"
+            detail=f"Internal server error. {remaining} attempts remaining."
         )
 
 @app.get('/square/{number}')
@@ -416,3 +479,574 @@ def read_insights(db: Session = Depends(get_db_main)):
 @app.get("/communities", response_model=List[schemas.CommunitiesSchema])
 def read_communities(db: Session = Depends(get_db_main)):
     return crud.get_all_communities(db)
+
+
+# FOR CHARAIVETI
+
+def validate_usn_field(usn: str, field_name: str) -> bool:
+    if not usn or len(usn.strip()) == 0:
+        return False
+    
+    if len(usn) > 40:
+        return False
+
+    pattern = r'^[a-zA-Z0-9]+$'
+    return re.match(pattern, usn) is not None
+
+def sanitize_usn(input_string: str) -> str:
+    if not input_string:
+        return ""
+    
+    sanitized = re.sub(r'[^a-zA-Z0-9]', '', input_string)
+    return sanitized
+
+@app.post('/students-register', response_model=schemas.StudentResponse)
+def register(student: schemas.StudentCreate, request: Request, db: Session = Depends(get_db_students)):
+    
+    student_ip = get_client_ip(request)
+    
+    is_limited, limit_message = is_rate_limited(student_ip)
+    if is_limited:
+        logger.warning(f"Registration rate limit exceeded for IP: {student_ip}")
+        raise HTTPException(status_code=429, detail=limit_message)
+    
+    try:
+        if not student.email or not student.password or not student.name or not student.usn:
+            logger.warning(f"Registration attempt with missing fields from IP: {student_ip}")
+            raise HTTPException(
+                status_code=400,
+                detail="All fields (firstname, lastname, email, password) are required"
+            )
+        
+        sanitized_name = sanitize_input(student.name)
+        sanitized_usn = sanitize_usn(student.usn)
+        sanitized_email = sanitize_input(student.email.lower())
+        sanitized_password = sanitize_input(student.password)
+        
+        if not validate_email(sanitized_email):
+            logger.warning(f"Invalid email format in registration from IP: {student_ip}")
+            record_failed_attempt(student_ip)  # Count as failed attempt
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        
+        if not validate_name_field(sanitized_name, "Name"):
+            record_failed_attempt(student_ip)
+            raise HTTPException(status_code=400, detail="Invalid name")
+            
+        if not validate_usn_field(sanitized_usn, "Usn"):
+            record_failed_attempt(student_ip)
+            raise HTTPException(status_code=400, detail="Invalid usn")
+        
+        if not validate_password_strength(sanitized_password):
+            record_failed_attempt(student_ip)
+            raise HTTPException(
+                status_code=400, 
+                detail="Password must be at least 8 characters with uppercase, lowercase, number, and special character"
+            )
+        
+        logger.info(f"Registration attempt for email hash: {hash_sensitive_data(sanitized_email)} from IP: {student_ip}")
+        
+        sanitized_student = schemas.StudentCreate(
+            name=sanitized_name,
+            usn=sanitized_usn,
+            email=sanitized_email,
+            password=sanitized_password
+        )
+        
+        new_student = crud.create_student(db, sanitized_student)
+        
+        logger.info(f"Successful registration for user ID: {new_student.id} from IP: {student_ip}")
+        
+        if student_ip in login_attempts:
+            login_attempts[student_ip] = []
+        
+        return new_student
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected registration error for IP: {student_ip}, Error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred during registration"
+        )
+
+@app.post('/students-login')
+def login(user: schemas.StudentLogin, request: Request, db: Session = Depends(get_db_students)):
+    
+    student_ip = get_client_ip(request)
+    print(f"[STUDENT-LOGIN] Starting login for IP: {student_ip}")
+    
+    try:
+        print(f"[STUDENT-LOGIN] Checking rate limit for IP: {student_ip}")
+        
+        is_limited, limit_message = is_rate_limited(student_ip)
+        if is_limited:
+            print(f"[STUDENT-LOGIN] Rate limit exceeded for IP: {student_ip}")
+            logger.warning(f"Rate limit exceeded for IP: {student_ip}")
+            raise HTTPException(status_code=429, detail=limit_message)
+        
+        print(f"[STUDENT-LOGIN] Rate limit check passed for IP: {student_ip}")
+        
+        if not user.email or not user.password:
+            print(f"[STUDENT-LOGIN] Missing credentials for IP: {student_ip}")
+            logger.warning(f"Login attempt with missing credentials from IP: {student_ip}")
+            rate_limit.record_student_failed_attempt(student_ip, r)
+            remaining_attempts = rate_limit.get_student_remaining_attempts(student_ip, r)  # You may need to implement this
+            raise HTTPException(
+                status_code=400,
+                detail=f"Email and password are required. {remaining_attempts} attempts remaining."
+            )
+        
+        sanitized_email = sanitize_input(user.email.lower())
+        sanitized_password = sanitize_input(user.password)
+        
+        if not validate_email(sanitized_email):
+            print(f"[STUDENT-LOGIN] Invalid email format for IP: {student_ip}")
+            logger.warning(f"Invalid email format attempted from IP: {student_ip}")
+            rate_limit.record_student_failed_attempt(student_ip, r)
+            remaining_attempts = rate_limit.get_student_remaining_attempts(student_ip, r)
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid email format. {remaining_attempts} attempts remaining."
+            )
+        
+        print(f"[STUDENT-LOGIN] Email validation passed, attempting authentication")
+        logger.info(f"Login attempt for email hash: {hash_sensitive_data(sanitized_email)} from IP: {student_ip}")
+        
+        sanitized_student = schemas.StudentLogin(
+            email=sanitized_email,
+            password=sanitized_password
+        )
+        
+        try:
+            authenticated = crud.authenticate_student(db, sanitized_student)
+            print(f"[STUDENT-LOGIN] Authentication successful: {authenticated}")
+            
+        except HTTPException as auth_error:
+            print(f"[STUDENT-LOGIN] Authentication failed for IP: {student_ip} - {auth_error.detail}")
+            rate_limit.record_student_failed_attempt(student_ip, r)
+            remaining_attempts = rate_limit.get_student_remaining_attempts(student_ip, r)
+            logger.warning(
+                f"Failed login attempt for email hash: {hash_sensitive_data(sanitized_email)} "
+                f"from IP: {student_ip}"
+            )
+            
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid email or password. {remaining_attempts} attempts remaining."
+            )
+        
+        if not authenticated:
+            print(f"[STUDENT-LOGIN] Authentication returned False for IP: {student_ip}")
+            rate_limit.record_student_failed_attempt(student_ip, r)
+            remaining_attempts = rate_limit.get_student_remaining_attempts(student_ip, r)
+            logger.warning(
+                f"Failed login attempt for email hash: {hash_sensitive_data(sanitized_email)} "
+                f"from IP: {student_ip}"
+            )
+            
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid email or password. {remaining_attempts} attempts remaining."
+            )
+        
+        print(f"[LOGIN] Authentication successful for IP: {student_ip}")
+        rate_limit.reset_failed_attempts(student_ip, r)
+        
+        if student_ip in login_attempts:
+            login_attempts[student_ip] = []
+            
+        
+        access_token = create_access_token(data={"sub": authenticated.id})
+        
+        response = JSONResponse(content={
+            "message": authenticated.detail,
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "user": {
+                "id": authenticated.id,
+                "name": authenticated.name,
+                "email": authenticated.email
+            },
+            "login_timestamp": datetime.now().isoformat(),
+            "success": True
+        })
+        
+        response.set_cookie(
+            key="token",
+            value=access_token,
+            httponly=True,
+            secure=False,
+            samesite="Lax",
+            path="/",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+
+        response.set_cookie(
+            key="user",
+            value=json.dumps({
+                "id": authenticated.id,
+                "name": authenticated.name,
+                "email": authenticated.email
+            }),
+            httponly=False,
+            path="/",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+
+        return response
+    
+    except HTTPException as he:
+        if he.status_code == 429:
+            print(f"[STUDENT-LOGIN] Rate limit exceeded for IP: {student_ip}")
+        else:
+            print(f"[STUDENT-LOGIN] HTTPException caught: {he.detail}")
+        raise  # Re-raise the HTTPException
+        
+    except Exception as e:
+        print(f"[STUDENT-LOGIN] Unexpected error for IP: {student_ip}: {e}")
+        logger.error(f"Unexpected login error for IP: {student_ip}, Error: {str(e)}", exc_info=True)
+        rate_limit.record_student_failed_attempt(student_ip, r)
+        remaining_attempts = rate_limit.get_student_remaining_attempts(student_ip, r)
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error. {remaining_attempts} attempts remaining."
+        )
+
+@app.post('/faculty-register', response_model=schemas.FacultyResponse)
+def register(faculty: schemas.FacultyCreate, request: Request, db: Session = Depends(get_db_students)):
+    
+    faculty_ip = get_client_ip(request)
+    
+    is_limited, limit_message = is_rate_limited(faculty_ip)
+    if is_limited:
+        logger.warning(f"Registration rate limit exceeded for IP: {faculty_ip}")
+        raise HTTPException(status_code=429, detail=limit_message)
+    
+    try:
+        if not faculty.email or not faculty.password or not faculty.name:
+            logger.warning(f"Registration attempt with missing fields from IP: {faculty_ip}")
+            raise HTTPException(
+                status_code=400,
+                detail="All fields (firstname, lastname, email, password) are required"
+            )
+        
+        sanitized_name = sanitize_input(faculty.name)
+        sanitized_email = sanitize_input(faculty.email.lower())
+        sanitized_password = sanitize_input(faculty.password)
+        
+        if not validate_email(sanitized_email):
+            logger.warning(f"Invalid email format in registration from IP: {faculty_ip}")
+            record_failed_attempt(faculty_ip)  # Count as failed attempt
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        
+        if not validate_name_field(sanitized_name, "Name"):
+            record_failed_attempt(faculty_ip)
+            raise HTTPException(status_code=400, detail="Invalid name")
+        
+        if not validate_password_strength(sanitized_password):
+            record_failed_attempt(faculty_ip)
+            raise HTTPException(
+                status_code=400, 
+                detail="Password must be at least 8 characters with uppercase, lowercase, number, and special character"
+            )
+        
+        logger.info(f"Registration attempt for email hash: {hash_sensitive_data(sanitized_email)} from IP: {faculty_ip}")
+        
+        sanitized_faculty = schemas.FacultyCreate(
+            name=sanitized_name,
+            email=sanitized_email,
+            password=sanitized_password
+        )
+        
+        new_faculty = crud.create_faculty(db, sanitized_faculty)
+        
+        logger.info(f"Successful registration for user ID: {new_faculty.id} from IP: {faculty_ip}")
+        
+        if faculty_ip in login_attempts:
+            login_attempts[faculty_ip] = []
+        
+        return new_faculty
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected registration error for IP: {faculty_ip}, Error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred during registration"
+        )
+
+
+@app.post('/faculty-login')
+def login(user: schemas.FacultyLogin, request: Request, db: Session = Depends(get_db_students)):
+    
+    faculty_ip = get_client_ip(request)
+    print(f"[FACULTY-LOGIN] Starting login for IP: {faculty_ip}")
+    
+    try:
+        print(f"[FACULTY-LOGIN] Checking rate limit for IP: {faculty_ip}")
+        
+        rate_limit.check_faculty_rate_limit(faculty_ip, r)
+        print(f"[FACULTY-LOGIN] Rate limit check passed for IP: {faculty_ip}")
+        
+        if not user.email or not user.password:
+            print(f"[FACULTY-LOGIN] Missing credentials for IP: {faculty_ip}")
+            logger.warning(f"Login attempt with missing credentials from IP: {faculty_ip}")
+            rate_limit.record_faculty_failed_attempt(faculty_ip, r)
+            remaining = rate_limit.get_faculty_remaining_attempts(faculty_ip, r)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Email and password are required. {remaining} attempts remaining."
+            )
+        
+        sanitized_email = sanitize_input(user.email.lower())
+        sanitized_password = sanitize_input(user.password)
+        
+        if not validate_email(sanitized_email):
+            print(f"[FACULTY-LOGIN] Invalid email format for IP: {faculty_ip}")
+            logger.warning(f"Invalid email format attempted from IP: {faculty_ip}")
+            rate_limit.record_faculty_failed_attempt(faculty_ip, r)
+            remaining = rate_limit.get_faculty_remaining_attempts(faculty_ip, r)
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid email format. {remaining} attempts remaining."
+            )
+        
+        print(f"[FACULTY-LOGIN] Email validation passed, attempting authentication")
+        logger.info(f"Login attempt for email hash: {hash_sensitive_data(sanitized_email)} from IP: {faculty_ip}")
+        
+        sanitized_faculty = schemas.FacultyLogin(
+            email=sanitized_email,
+            password=sanitized_password
+        )
+        
+        try:
+            authenticated = crud.authenticate_faculty(db, sanitized_faculty)
+            print(f"[FACULTY-LOGIN] Authentication successful: {authenticated}")
+            
+        except HTTPException as auth_error:
+            print(f"[FACULTY-LOGIN] Authentication failed for IP: {faculty_ip} - {auth_error.detail}")
+            rate_limit.record_faculty_failed_attempt(faculty_ip, r)
+            remaining = rate_limit.get_faculty_remaining_attempts(faculty_ip, r)
+            logger.warning(
+                f"Failed login attempt for email hash: {hash_sensitive_data(sanitized_email)} "
+                f"from IP: {faculty_ip}"
+            )
+            
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid email or password. {remaining} attempts remaining."
+            )
+        
+        if not authenticated:
+            print(f"[FACULTY-LOGIN] Authentication returned False for IP: {faculty_ip}")
+            rate_limit.record_faculty_failed_attempt(faculty_ip, r)
+            remaining = rate_limit.get_faculty_remaining_attempts(faculty_ip, r)
+            logger.warning(
+                f"Failed login attempt for email hash: {hash_sensitive_data(sanitized_email)} "
+                f"from IP: {faculty_ip}"
+            )
+            
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid email or password. {remaining} attempts remaining."
+            )
+        
+        print(f"[LOGIN] Authentication successful for IP: {faculty_ip}")
+        rate_limit.reset_failed_attempts(faculty_ip, r)
+        
+        access_token = create_access_token(data={"sub": authenticated.id})
+        
+        response = JSONResponse(content={
+            "message": authenticated.detail,
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "user": {
+                "id": authenticated.id,
+                "name": authenticated.name,
+                "email": authenticated.email
+            },
+            "login_timestamp": datetime.now().isoformat(),
+            "success": True
+        })
+        
+        response.set_cookie(
+            key="token",
+            value=access_token,
+            httponly=True,
+            secure=False,
+            samesite="Lax",
+            path="/",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+
+        response.set_cookie(
+            key="user",
+            value=json.dumps({
+                "id": authenticated.id,
+                "name": authenticated.name,
+                "email": authenticated.email
+            }),
+            httponly=False,
+            path="/",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+
+        return response
+    
+    except HTTPException as he:
+        if he.status_code == 429:
+            print(f"[FACULTY-LOGIN] Rate limit exceeded for IP: {faculty_ip}")
+        else:
+            print(f"[FACULTY-LOGIN] HTTPException caught: {he.detail}")
+        raise  # Re-raise the HTTPException
+        
+    except Exception as e:
+        print(f"[FACULTY-LOGIN] Unexpected error for IP: {faculty_ip}: {e}")
+        logger.error(f"Unexpected login error for IP: {faculty_ip}, Error: {str(e)}", exc_info=True)
+        rate_limit.record_faculty_failed_attempt(faculty_ip, r)
+        remaining = rate_limit.get_faculty_remaining_attempts(faculty_ip, r)
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error. {remaining} attempts remaining."
+        )
+
+@app.get('/debug/rate-limit/{ip}')
+def debug_rate_limit(ip: str):
+    from rate_limit import get_rate_limit_info
+    return get_rate_limit_info(ip, r)
+
+@app.post('/test/rate-limit')
+def test_rate_limit(request: Request):
+    client_ip = get_client_ip(request)
+    
+    try:
+        from rate_limit import get_rate_limit_info
+        before = get_rate_limit_info(client_ip, r)
+        print(f"[TEST] Before: {before}")
+        
+        # FIXED: Call without redis_client parameter
+        rate_limit.record_failed_attempt_redis(client_ip, r)
+        
+        after = get_rate_limit_info(client_ip, r)
+        print(f"[TEST] After: {after}")
+        
+        return {
+            "message": "Rate limit test completed",
+            "before": before,
+            "after": after
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "message": "Rate limit test failed"
+        }
+
+@app.post('/test/reset-rate-limit')  
+def reset_rate_limit_test(request: Request):
+    client_ip = get_client_ip(request)
+    rate_limit.reset_failed_attempts(client_ip, r)
+    
+    from rate_limit import get_rate_limit_info
+    info = get_rate_limit_info(client_ip, r)
+    
+    return {
+        "message": f"Rate limit reset for IP: {client_ip}",
+        "info": info
+    }
+    
+@app.get('/debugstudent/rate-limit/{ip}')
+def debug_rate_limit(ip: str):
+    from rate_limit import get_rate_limit_info
+    return get_rate_limit_info(ip, r)
+
+@app.post('/teststudent/rate-limit')
+def test_rate_limit(request: Request):
+    student_ip = get_client_ip(request)
+    
+    try:
+        from rate_limit import get_rate_limit_info
+        before = get_rate_limit_info(student_ip, r)
+        print(f"[TEST] Before: {before}")
+        
+        # FIXED: Call without redis_client parameter
+        rate_limit.record_failed_attempt_redis(student_ip, r)
+        
+        after = get_rate_limit_info(student_ip, r)
+        print(f"[TEST] After: {after}")
+        
+        return {
+            "message": "Rate limit test completed",
+            "before": before,
+            "after": after
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "message": "Rate limit test failed"
+        }
+
+@app.post('/teststudent/reset-rate-limit')  
+def reset_rate_limit_test(request: Request):
+    student_ip = get_client_ip(request)
+    rate_limit.reset_failed_attempts(student_ip, r)
+    
+    from rate_limit import get_rate_limit_info
+    info = get_rate_limit_info(student_ip, r)
+    
+    return {
+        "message": f"Rate limit reset for IP: {student_ip}",
+        "info": info
+    }
+    
+@app.get('/debugfaculty/rate-limit/{ip}')
+def debug_rate_limit(ip: str):
+    from rate_limit import get_rate_limit_info
+    return get_rate_limit_info(ip, r)
+
+@app.post('/testfaculty/rate-limit')
+def test_rate_limit(request: Request):
+    faculty_ip = get_client_ip(request)
+    
+    try:
+        from rate_limit import get_rate_limit_info
+        before = get_rate_limit_info(faculty_ip, r)
+        print(f"[TEST] Before: {before}")
+        
+        # FIXED: Call without redis_client parameter
+        rate_limit.record_failed_attempt_redis(faculty_ip, r)
+        
+        after = get_rate_limit_info(faculty_ip, r)
+        print(f"[TEST] After: {after}")
+        
+        return {
+            "message": "Rate limit test completed",
+            "before": before,
+            "after": after
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "message": "Rate limit test failed"
+        }
+
+@app.post('/testfaculty/reset-rate-limit')  
+def reset_rate_limit_test(request: Request):
+    faculty_ip = get_client_ip(request)
+    rate_limit.reset_failed_attempts(faculty_ip, r)
+    
+    from rate_limit import get_rate_limit_info
+    info = get_rate_limit_info(faculty_ip, r)
+    
+    return {
+        "message": f"Rate limit reset for IP: {faculty_ip}",
+        "info": info
+    }

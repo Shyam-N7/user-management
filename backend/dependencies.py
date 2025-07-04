@@ -1,4 +1,4 @@
-from database import SessionLocalMain, SessionLocalUsers
+from database import SessionLocalMain, SessionLocalUsers, SessionLocalStudents
 
 def get_db_main():
     db_main = SessionLocalMain()
@@ -17,3 +17,12 @@ def get_db_users():
     #Terminates session after completion
     finally:
         db_users.close()
+        
+def get_db_students():
+    db_students = SessionLocalStudents()
+    #provides db session for api routes
+    try:
+        yield db_students
+    #Terminates session after completion
+    finally:
+        db_students.close()

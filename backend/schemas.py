@@ -111,3 +111,42 @@ class CommunitiesSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# FOR CHARAIVETI
+class StudentResponse(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    detail: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class StudentCreate(BaseModel):
+    name: str
+    usn: str
+    email: EmailStr
+    password: str
+
+class StudentLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class FacultyResponse(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    detail: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class FacultyCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+class FacultyLogin(BaseModel):
+    email: EmailStr
+    password: str

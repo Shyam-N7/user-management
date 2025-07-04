@@ -42,10 +42,11 @@ const RegisterPage = () => {
 
         setLoading(true);
 
-        try{
-            const response = await fetch('https://user-management-wucu.onrender.com/register', {
+        try {
+            // const response = await fetch('https://user-management-wucu.onrender.com/register', {
+            const response = await fetch('http://127.0.0.1:8000/register', {
                 method: 'POST',
-                headers: {'Content-type': 'application/json'},
+                headers: { 'Content-type': 'application/json' },
                 body: JSON.stringify({
                     firstname: formData.firstname,
                     lastname: formData.lastname,
@@ -55,16 +56,16 @@ const RegisterPage = () => {
             });
 
             const data = await response.json();
-            if(!response.ok){
+            if (!response.ok) {
                 setMessage(data.detail || 'Registration failed');
             }
-            else{
+            else {
                 setMessage('Regsitered successfully! Redirecting to login...')
                 setTimeout(() => [
                     window.location.href = '/'
                 ], 1500);
             }
-        } catch(err){
+        } catch (err) {
             console.log(err);
             setMessage(err.message);
         } finally {
@@ -80,11 +81,11 @@ const RegisterPage = () => {
 
                 <div className="flex">
                     <label>
-                        <input 
+                        <input
                             name='firstname'
-                            required 
-                            placeholder=" " 
-                            type="text" 
+                            required
+                            placeholder=" "
+                            type="text"
                             className="input"
                             value={formData.firstname}
                             onChange={handleChange}
@@ -94,11 +95,11 @@ const RegisterPage = () => {
                     </label>
 
                     <label>
-                        <input 
+                        <input
                             name='lastname'
-                            required 
-                            placeholder=" " 
-                            type="text" 
+                            required
+                            placeholder=" "
+                            type="text"
                             className="input"
                             value={formData.lastname}
                             onChange={handleChange}
@@ -109,11 +110,11 @@ const RegisterPage = () => {
                 </div>
 
                 <label>
-                    <input 
+                    <input
                         name='email'
-                        required 
-                        placeholder=" " 
-                        type="email" 
+                        required
+                        placeholder=" "
+                        type="email"
                         className="input"
                         value={formData.email}
                         onChange={handleChange}
@@ -123,11 +124,11 @@ const RegisterPage = () => {
                 </label>
 
                 <label>
-                    <input 
+                    <input
                         name='password'
-                        required 
-                        placeholder=" " 
-                        type={showPassword ? "text" : "password"} 
+                        required
+                        placeholder=" "
+                        type={showPassword ? "text" : "password"}
                         className="input"
                         value={formData.password}
                         onChange={handleChange}
@@ -140,11 +141,11 @@ const RegisterPage = () => {
                 </label>
 
                 <label>
-                    <input 
+                    <input
                         name='passwordConfirm'
-                        required 
-                        placeholder=" " 
-                        type={confirmPassword ? "text" : "password"} 
+                        required
+                        placeholder=" "
+                        type={confirmPassword ? "text" : "password"}
                         className="input"
                         value={formData.passwordConfirm}
                         onChange={handleChange}

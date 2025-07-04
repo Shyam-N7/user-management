@@ -2,19 +2,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 from sqlalchemy.exc import DBAPIError
 # from models import User
-from schemas import UserCreate, UserResponse, UserUpdate, ClientCreate, ClientResponse, UserLogin, TestingSchema, TestingTwoSchema, InsightsSchema, CommunitiesSchema
+from schemas import UserCreate, UserResponse, UserUpdate, ClientCreate, ClientResponse, UserLogin, TestingSchema, TestingTwoSchema, InsightsSchema, CommunitiesSchema, StudentCreate, StudentResponse, StudentLogin, FacultyCreate, FacultyLogin, FacultyResponse
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from auth import hash_password, verify_password
 def create_user(db: Session, user: UserCreate):
-    # db_user = User(name=user.name, email=user.email)
-    # db.add(db_user)
-    # db.commit()
-    # db.refresh(db_user)
-    # return db_user
-    
-    #Insertion using query
-    #check existing user
     query = text("SELECT id FROM users WHERE email = :email")
     result = db.execute(query, {"email": user.email})
     existing_user = result.mappings().first()
@@ -104,7 +96,7 @@ def authenticate_client(db: Session, user: UserLogin) -> UserResponse:
     try:
         result = db.execute(query, {"email": user.email}).mappings().first()
         if not result or not verify_password(user.password, result["hashed_password"]):
-            raise HTTPException(status_code = 401, detail = "Invalid email or password")
+            return None
         return ClientResponse(id = result["id"], firstname = result["firstname"], lastname = result["lastname"], email = result["email"], detail = "Login Successful")
     
     except SQLAlchemyError as e:
@@ -277,3 +269,87 @@ def get_all_communities(db: Session):
     result = db.execute(query)
     records = result.mappings().all()
     return [CommunitiesSchema(**row) for row in records]
+
+
+# FOR CHARAIVETI
+
+def create_student(db: Session, student: StudentCreate) -> StudentResponse:
+    # CHECK EMAIL IF IT ALREADY EXISTS
+    check_email = text("SELECT id FROM students WHERE email = :email")
+    try:
+        check_email_result = db.execute(check_email, {"email": student.email}).first()
+        if check_email_result:
+            raise HTTPException(status_code=400, detail="Email already registered!") 
+        
+        # INSERT USER
+        hashed_password = hash_password(student.password)
+        query = text("""
+            INSERT INTO students (name, usn, email, hashed_password)
+            VALUES (:name, :usn, :email, :hashed_password)
+            RETURNING id, name, usn, email
+        """)
+        result = db.execute(query, {
+            "name": student.name,
+            "usn": student.usn,
+            "email": student.email,
+            "hashed_password": hashed_password
+        })
+        db.commit()
+        student_res = result.mappings().first()
+        return StudentResponse(**student_res)
+    
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+    
+def authenticate_student(db: Session, student: StudentLogin) -> StudentResponse:
+    query = text("SELECT * FROM students WHERE email = :email")
+    try:
+        result = db.execute(query, {"email": student.email}).mappings().first()
+        if not result or not verify_password(student.password, result["hashed_password"]):
+            raise HTTPException(status_code = 401, detail = "Invalid email or password")
+        return StudentResponse(id = result["id"], name = result["name"], usn = result["usn"], email = result["email"], detail = "Login Successful")
+    
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+
+def create_faculty(db: Session, faculty: FacultyCreate) -> FacultyResponse:
+    # CHECK EMAIL IF IT ALREADY EXISTS
+    check_email = text("SELECT id FROM faculties WHERE email = :email")
+    try:
+        check_email_result = db.execute(check_email, {"email": faculty.email}).first()
+        if check_email_result:
+            raise HTTPException(status_code=400, detail="Email already registered!") 
+        
+        # INSERT USER
+        hashed_password = hash_password(faculty.password)
+        query = text("""
+            INSERT INTO faculties (name, email, hashed_password)
+            VALUES (:name, :email, :hashed_password)
+            RETURNING id, name, email
+        """)
+        result = db.execute(query, {
+            "name": faculty.name,
+            "email": faculty.email,
+            "hashed_password": hashed_password
+        })
+        db.commit()
+        faculty_res = result.mappings().first()
+        return FacultyResponse(**faculty_res)
+    
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+    
+def authenticate_faculty(db: Session, faculty: FacultyLogin) -> FacultyResponse:
+    query = text("SELECT * FROM faculties WHERE email = :email")
+    try:
+        result = db.execute(query, {"email": faculty.email}).mappings().first()
+        if not result or not verify_password(faculty.password, result["hashed_password"]):
+            raise HTTPException(status_code = 401, detail = "Invalid email or password")
+        return FacultyResponse(id = result["id"], name = result["name"], email = result["email"], detail = "Login Successful")
+    
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")

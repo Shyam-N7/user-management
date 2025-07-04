@@ -32,6 +32,9 @@ from datetime import datetime, timedelta, timezone
 import jwt
 import os
 from dotenv import load_dotenv
+from jwt import PyJWTError
+from fastapi import Request, HTTPException
+
 
 load_dotenv()
 
@@ -53,6 +56,18 @@ def verify_password(original_password, hashed_password):
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": int(expire.timestamp())})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def get_current_user(request: Request):
+    token = request.cookies.get("token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+        
+    except PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")

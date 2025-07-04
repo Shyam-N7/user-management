@@ -302,10 +302,25 @@ function Home() {
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/';
+    const handleLogout = async () => {
+        try {
+
+            await fetch("http://localhost:8000/api/logout", {
+                method: "POST",
+                credentials: "include",
+            });
+
+
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/';
+        } catch (err) {
+            console.error("logout Failed: ", err);
+
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/';
+        }
     };
 
     return (
@@ -378,7 +393,7 @@ function Home() {
                             </li>
                         ))
                     ) : (
-                        <li>{loading ? <div className="spinner"></div> : 'No users found.'}</li>
+                        <li>{loading ? <div className="loading-div"><span>Fetching users</span><div className="spinner"></div></div> : 'No users found.'}</li>
                     )}
                 </ul>
                 <h2><u>Postgre Functions</u></h2>

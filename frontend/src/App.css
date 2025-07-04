@@ -305,3 +305,9 @@ li {
   color: #000 !important;
   /* fallback color */
 }
+
+.loading-div{
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
