@@ -11,7 +11,7 @@ load_dotenv()
 
 SQL_ALCHEMY_DB_URL = os.getenv("DATABASE_URL")
 USERS_DB_URL = os.getenv("DATABASE_URL")
-STUDENTS_DB_URL = os.getenv("STUDENTS_DATABASE_URL")
+STUDENTS_DB_URL = os.getenv("DATABASE_URL")
 
 engine_main = create_engine(SQL_ALCHEMY_DB_URL)
 engine_users = create_engine(USERS_DB_URL)
