@@ -81,9 +81,9 @@ const LoginPage = () => {
                 </label>
 
                 <button type='submit' className="submit-button" disabled={loading}>{loading ?
-                    <div class="loader">
-                        <div class="loading-text">
-                            Authenticating<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                    <div className="loader">
+                        <div className="loading-text">
+                            Authenticating<span className="dot">.</span><span className="dot">.</span><span className="dot">.</span>
                         </div>
                     </div>
                     : 'Login'}</button>
