@@ -43,13 +43,7 @@ const RegisterPage = () => {
         setLoading(true);
 
         try {
-<<<<<<< HEAD
-            // const response = await fetch('https://user-management-wucu.onrender.com/register', {
             const response = await fetch('https://user-management-wucu.onrender.com/register', {
-=======
-            const response = await fetch('https://user-management-wucu.onrender.com/register', {
-            // const response = await fetch('http://127.0.0.1:8000/register', {
->>>>>>> a466cee (updated login and register)
                 method: 'POST',
                 headers: { 'Content-type': 'application/json' },
                 body: JSON.stringify({
