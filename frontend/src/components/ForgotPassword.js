@@ -75,11 +75,43 @@ const ForgotPassword = () => {
             <div className="login-container">
                 <div className="form">
                     <p className="title">Check Your Email</p>
-                    <div className="success-icon">
-                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="12" cy="12" r="10" stroke="#10b981" strokeWidth="2" />
-                            <path d="m9 12 2 2 4-4" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                    <div className="animation-ctn">
+                        <div className="icon icon--order-success svg">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="60px" height="60px" viewBox="0 0 154 154">
+                                <g fill="none" stroke="#22AE73" strokeWidth="2">
+                                    <circle
+                                        cx="77"
+                                        cy="77"
+                                        r="72"
+                                        style={{
+                                            strokeDasharray: '480px, 480px',
+                                            strokeDashoffset: '960px'
+                                        }}
+                                    />
+                                    <circle
+                                        id="colored"
+                                        fill="#22AE73"
+                                        cx="77"
+                                        cy="77"
+                                        r="72"
+                                        style={{
+                                            strokeDasharray: '480px, 480px',
+                                            strokeDashoffset: '960px'
+                                        }}
+                                    />
+                                    <polyline
+                                        className="st0"
+                                        stroke="#fff"
+                                        strokeWidth="8"
+                                        points="43.5,77.8 63.7,97.9 112.2,49.4"
+                                        style={{
+                                            strokeDasharray: '100px, 100px',
+                                            strokeDashoffset: '200px'
+                                        }}
+                                    />
+                                </g>
+                            </svg>
+                        </div>
                     </div>
                     <p className="message">
                         We've sent password reset instructions to <strong>{email}</strong>
