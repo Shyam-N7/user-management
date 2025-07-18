@@ -88,8 +88,11 @@ const LoginPage = () => {
                         </div>
                     </div>
                     : 'Login'}</button>
-
                 {error && <p className='error'>{error}</p>}
+                <p className="forgot-password">
+                    <a href="/forgot-password">Forgot password?</a>
+                </p>
+                <p style={{'fontSize': '13px'}}>(or)</p>
 
                 <p className="signin">
                     Don't have an account? <a href="/register">Create One</a>

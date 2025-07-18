@@ -12,13 +12,11 @@ import json
 from auth import create_access_token
 from typing import List
 import logging
-import re
 from collections import defaultdict
-from typing import Optional
-import time
-import hashlib
 from datetime import datetime
 from auth import (create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES)
+from auth import validate_usn_field, sanitize_usn, get_client_ip, is_rate_limited, validate_email, record_failed_attempt, sanitize_input, validate_name_field, validate_password_strength, hash_sensitive_data, create_password_reset_token, verify_password_reset_token
+from email_service import send_password_change_confirmation, send_password_reset_email
 from middleware.blacklist_token import TokenBlocklistMiddleware
 from routes.user import user_router
 from routes.students import student_router
@@ -100,95 +98,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db_main)):
 # @app.post('/register', response_model = schemas.ClientResponse)
 # def register(user: schemas.ClientCreate, db: Session = Depends(get_db_users)):
 #     return crud.create_client(db, user)
-
-def validate_email(email: str) -> bool:
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
-def validate_name_field(name: str, field_name: str) -> bool:
-    if not name or len(name.strip()) == 0:
-        return False
-    
-    if len(name) > 50:  # Reasonable length limit
-        return False
-    
-    # Allow only letters, spaces, hyphens, apostrophes
-    pattern = r'^[a-zA-Z\s\-]+$'
-    if not re.match(pattern, name):
-        return False
-    
-    return True
-
-def validate_password_strength(password: str) -> bool:
-    if len(password) < 8:
-        return False
-    if len(password) > 128:  # Prevent DoS
-        return False
-    if not re.search(r'[A-Z]', password):  # Uppercase
-        return False
-    if not re.search(r'[a-z]', password):  # Lowercase
-        return False
-    if not re.search(r'\d', password):     # Number
-        return False
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):  # Special char
-        return False
-    
-    return True
-
-def get_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip
-    
-    return request.client.host
-
-def is_rate_limited(ip_address: str) -> tuple[bool, Optional[str]]:
-    current_time = time.time()
-    
-    # Check if IP is currently blocked
-    if ip_address in blocked_ips:
-        if current_time < blocked_ips[ip_address]:
-            remaining_time = int(blocked_ips[ip_address] - current_time)
-            return True, f"Too many failed attempts. Try again in {remaining_time} seconds"
-        else:
-            del blocked_ips[ip_address]
-            login_attempts[ip_address] = []
-    
-    # Clean old attempts
-    cutoff_time = current_time - ATTEMPT_WINDOW
-    login_attempts[ip_address] = [
-        attempt_time for attempt_time in login_attempts[ip_address] 
-        if attempt_time > cutoff_time
-    ]
-    
-    # Check if too many attempts
-    if len(login_attempts[ip_address]) >= MAX_LOGIN_ATTEMPTS:
-        blocked_ips[ip_address] = current_time + BLOCK_DURATION
-        logger.warning(f"IP {ip_address} blocked due to too many failed login attempts")
-        return True, f"Too many failed attempts. Blocked for {BLOCK_DURATION // 60} minutes"
-    
-    return False, None
-
-def record_failed_attempt(ip_address: str):
-    # Records failed login for rate limiting
-    current_time = time.time()
-    login_attempts[ip_address].append(current_time)
-    
-def sanitize_input(input_string: str) -> str:
-    if not input_string:
-        return ""
-    
-    # Remove dangerous characters
-    sanitized = input_string.replace('\x00', '').strip()
-    return sanitized[:255]
-
-def hash_sensitive_data(data: str) -> str:
-    return hashlib.sha256(data.encode()).hexdigest()[:8]
-
 
 @app.post('/register', response_model=schemas.ClientResponse)
 def register(user: schemas.ClientCreate, request: Request, db: Session = Depends(get_db_users)):
@@ -384,7 +293,222 @@ def login(user: schemas.UserLogin, request: Request, db: Session = Depends(get_d
             status_code=500,
             detail=f"Internal server error. {remaining} attempts remaining."
         )
+        
+@app.post('/forgot-password')
+def forgot_password(user: schemas.ForgotPassword, request: Request, db: Session = Depends(get_db_users)):
+    
+    client_ip = get_client_ip(request)
+    print(f"[FORGOT_PASSWORD] Starting forgot password for IP: {client_ip}")
+    
+    try:
+        print(f"[FORGOT_PASSWORD] Checking rate limit for IP: {client_ip}")
+        rate_limit.check_forgot_password_rate_limit(client_ip, r)
+        print(f"[FORGOT_PASSWORD] Rate limit check passed for IP: {client_ip}")
+        
+        if not user.email:
+            print(f"[FORGOT_PASSWORD] Missing email for IP: {client_ip}")
+            rate_limit.record_forgot_password_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_forgot_password_remaining_attempts(client_ip, r)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Email is required. {remaining} attempts remaining."
+            )
+        
+        sanitized_email = sanitize_input(user.email.lower())
+        
+        if not validate_email(sanitized_email):
+            print(f"[FORGOT_PASSWORD] Invalid email format for IP: {client_ip}")
+            rate_limit.record_forgot_password_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_forgot_password_remaining_attempts(client_ip, r)
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid email format. {remaining} attempts remaining."
+            )
+        
+        print(f"[FORGOT_PASSWORD] Email validation passed, checking if user exists")
+        
+        try:
+            user_exists = crud.get_user_by_email(db, sanitized_email)
+            
+            if not user_exists:
+                print(f"[FORGOT_PASSWORD] User not found for IP: {client_ip}")
+                rate_limit.record_forgot_password_failed_attempt(client_ip, r)
+                remaining = rate_limit.get_forgot_password_remaining_attempts(client_ip, r)
+                
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"User with this email does not exist. {remaining} attempts remaining."
+                )
+            
+            print(f"[FORGOT_PASSWORD] User found, generating reset token")
+            
+            reset_token = create_password_reset_token(user_exists.id, sanitized_email)
+            
+            crud.store_password_reset_token(db, user_exists.id, reset_token)
+            
+            try:
+                send_password_reset_email(sanitized_email, reset_token, user_exists.firstname)
+                print(f"[FORGOT_PASSWORD] Reset email sent successfully to {sanitized_email}")
+            except Exception as email_error:
+                print(f"[FORGOT_PASSWORD] Failed to send email to {sanitized_email}: {str(email_error)}")
+                # Clean up the token if email fails
+                crud.delete_reset_token(db, user_exists.id, reset_token)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to send password reset email. Please try again later."
+                )
+            
+            print(f"[FORGOT_PASSWORD] Password reset initiated for IP: {client_ip}")
+            rate_limit.reset_forgot_password_attempts(client_ip, r)
+            
+        except HTTPException as auth_error:
+            print(f"[FORGOT_PASSWORD] Process failed for IP: {client_ip} - {auth_error.detail}")
+            remaining = rate_limit.get_forgot_password_remaining_attempts(client_ip, r)
+            
+            raise HTTPException(
+                status_code=auth_error.status_code,
+                detail=f"{auth_error.detail}"
+            )
+        
+        return JSONResponse(content={
+            "message": "Password reset instructions have been sent to your email",
+            "success": True,
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    except HTTPException as he:
+        if he.status_code == 429:
+            print(f"[FORGOT_PASSWORD] Rate limit exceeded for IP: {client_ip}")
+        else:
+            print(f"[FORGOT_PASSWORD] HTTPException caught: {he.detail}")
+        raise
+        
+    except Exception as e:
+        print(f"[FORGOT_PASSWORD] Unexpected error for IP: {client_ip}: {e}")
+        rate_limit.record_forgot_password_failed_attempt(client_ip, r)
+        remaining = rate_limit.get_forgot_password_remaining_attempts(client_ip, r)
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error. {remaining} attempts remaining."
+        )
 
+
+@app.post('/reset-password')
+def reset_password(reset_data: schemas.ResetPassword, request: Request, db: Session = Depends(get_db_users)):
+    
+    client_ip = get_client_ip(request)
+    print(f"[RESET_PASSWORD] Starting password reset for IP: {client_ip}")
+    
+    try:
+        print(f"[RESET_PASSWORD] Checking rate limit for IP: {client_ip}")
+        rate_limit.check_client_rate_limit(client_ip, r)
+        print(f"[RESET_PASSWORD] Rate limit check passed for IP: {client_ip}")
+        
+        if not reset_data.token or not reset_data.new_password:
+            print(f"[RESET_PASSWORD] Missing required fields for IP: {client_ip}")
+            rate_limit.record_client_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Token and new password are required. {remaining} attempts remaining."
+            )
+        
+        sanitized_token = sanitize_input(reset_data.token)
+        sanitized_password = sanitize_input(reset_data.new_password)
+        
+        # Validate password strength
+        if not validate_password_strength(sanitized_password):
+            print(f"[RESET_PASSWORD] Weak password for IP: {client_ip}")
+            rate_limit.record_client_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Password must be at least 8 characters with uppercase, lowercase, number, and special character. {remaining} attempts remaining."
+            )
+        
+        print(f"[RESET_PASSWORD] Password validation passed, verifying reset token")
+        
+        try:
+            # Verify reset token
+            token_data = verify_password_reset_token(sanitized_token)
+            user_id = token_data.get("user_id")
+            user_email = token_data.get("email")
+            
+            if not user_id:
+                print(f"[RESET_PASSWORD] Invalid token structure for IP: {client_ip}")
+                rate_limit.record_client_failed_attempt(client_ip, r)
+                remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+                
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid reset token. {remaining} attempts remaining."
+                )
+            
+            # Check if token exists in database and is not expired
+            token_valid = crud.verify_reset_token(db, user_id, sanitized_token)
+            
+            if not token_valid:
+                print(f"[RESET_PASSWORD] Token expired or invalid for IP: {client_ip}")
+                rate_limit.record_client_failed_attempt(client_ip, r)
+                remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+                
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Reset token has expired or is invalid. {remaining} attempts remaining."
+                )
+            
+            user_details = crud.get_user_by_email(db, user_email)
+            
+            crud.update_user_password(db, user_id, sanitized_password)
+            
+            crud.delete_reset_token(db, user_id, sanitized_token)
+            
+            # Send password change confirmation email (optional)
+            if user_details:
+                try:
+                    send_password_change_confirmation(user_details.email, user_details.firstname)
+                    print(f"[RESET_PASSWORD] Confirmation email sent to {user_details.email}")
+                except Exception as email_error:
+                    print(f"[RESET_PASSWORD] Failed to send confirmation email: {str(email_error)}")
+                    # Don't fail the request if confirmation email fails
+            
+            print(f"[RESET_PASSWORD] Password reset successful for IP: {client_ip}")
+            rate_limit.reset_failed_attempts(client_ip, r)
+            
+        except HTTPException as auth_error:
+            print(f"[RESET_PASSWORD] Process failed for IP: {client_ip} - {auth_error.detail}")
+            rate_limit.record_client_failed_attempt(client_ip, r)
+            remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
+            
+            raise HTTPException(
+                status_code=auth_error.status_code,
+                detail=f"{auth_error.detail}"
+            )
+        
+        return JSONResponse(content={
+            "message": "Password has been reset successfully",
+            "success": True,
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    except HTTPException as he:
+        if he.status_code == 429:
+            print(f"[RESET_PASSWORD] Rate limit exceeded for IP: {client_ip}")
+        else:
+            print(f"[RESET_PASSWORD] HTTPException caught: {he.detail}")
+        raise  # Re-raise the HTTPException
+        
+    except Exception as e:
+        print(f"[RESET_PASSWORD] Unexpected error for IP: {client_ip}: {e}")
+        rate_limit.record_failed_attempt_redis(client_ip, r)
+        remaining = rate_limit.get_remaining_attempts(client_ip, r)
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error. {remaining} attempts remaining."
+        )
+        
 @app.get('/square/{number}')
 def get_square(number: int, db: Session = Depends(get_db_main)):
     return crud.get_square(db, number)
@@ -480,25 +604,6 @@ def read_insights(db: Session = Depends(get_db_main)):
 def read_communities(db: Session = Depends(get_db_main)):
     return crud.get_all_communities(db)
 
-
-# FOR CHARAIVETI
-
-def validate_usn_field(usn: str, field_name: str) -> bool:
-    if not usn or len(usn.strip()) == 0:
-        return False
-    
-    if len(usn) > 40:
-        return False
-
-    pattern = r'^[a-zA-Z0-9]+$'
-    return re.match(pattern, usn) is not None
-
-def sanitize_usn(input_string: str) -> str:
-    if not input_string:
-        return ""
-    
-    sanitized = re.sub(r'[^a-zA-Z0-9]', '', input_string)
-    return sanitized
 
 @app.post('/students-register', response_model=schemas.StudentResponse)
 def register(student: schemas.StudentCreate, request: Request, db: Session = Depends(get_db_students)):

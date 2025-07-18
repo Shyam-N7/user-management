@@ -101,7 +101,98 @@ def authenticate_client(db: Session, user: UserLogin) -> UserResponse:
     
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}") 
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+    
+def get_user_by_email(db: Session, email: str):
+    query = text("SELECT id, firstname, lastname, email FROM clients WHERE email = :email")
+    try:
+        result = db.execute(query, {"email": email}).mappings().first()
+        if result:
+            return ClientResponse(id = result["id"], firstname = result["firstname"], lastname = result["lastname"], email = result["email"], detail = "User found by email")
+        return None
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+
+def store_password_reset_token(db: Session, user_id: int, token: str):
+    # First, delete any existing reset tokens for this user
+    delete_query = text("DELETE FROM password_reset_tokens WHERE user_id = :user_id")
+    
+    # Insert new reset token - using PostgreSQL's NOW() function
+    insert_query = text("""
+        INSERT INTO password_reset_tokens (user_id, token, created_at, expires_at)
+        VALUES (:user_id, :token, NOW(), NOW() + INTERVAL '30 minutes')
+    """)
+    
+    try:
+        db.execute(delete_query, {"user_id": user_id})
+        db.execute(insert_query, {
+            "user_id": user_id,
+            "token": token
+        })
+        db.commit()
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+
+def verify_reset_token(db: Session, user_id: int, token: str):
+    query = text("""
+        SELECT id FROM password_reset_tokens 
+        WHERE user_id = :user_id AND token = :token AND expires_at > NOW()
+    """)
+    
+    try:
+        result = db.execute(query, {
+            "user_id": user_id,
+            "token": token
+        }).first()
+        
+        return result is not None
+        
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+
+def update_user_password(db: Session, user_id: int, new_password: str):
+    hashed_password = hash_password(new_password)
+    query = text("""
+        UPDATE clients 
+        SET hashed_password = :hashed_password, updated_at = NOW()
+        WHERE id = :user_id
+    """)
+    
+    try:
+        db.execute(query, {
+            "hashed_password": hashed_password,
+            "user_id": user_id
+        })
+        db.commit()
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+
+def delete_reset_token(db: Session, user_id: int, token: str):
+    query = text("DELETE FROM password_reset_tokens WHERE user_id = :user_id AND token = :token")
+    
+    try:
+        db.execute(query, {"user_id": user_id, "token": token})
+        db.commit()
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
+
+def cleanup_expired_tokens(db: Session):
+    query = text("DELETE FROM password_reset_tokens WHERE expires_at < NOW()")
+    
+    try:
+        result = db.execute(query)
+        db.commit()
+        print(f"[CLEANUP] Removed {result.rowcount} expired password reset tokens")
+        
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Database error: {str(e)}")
 
 def get_square(db: Session, number:int):
     query = text("SELECT square(:number)")

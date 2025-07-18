@@ -5,9 +5,14 @@ import redis
 CLIENT_LOGIN_PREFIX = "client_login_attempts:"
 STUDENT_LOGIN_PREFIX = "student_login_attempts:"
 FACULTY_LOGIN_PREFIX = "faculty_login_attempts:"
+FORGOT_PASSWORD_PREFIX = "forgot_password_attempts:"
+
 
 BLOCK_TIME_SECONDS = 600  # 10 minutes
 MAX_ATTEMPTS = 5
+
+FORGOT_PASSWORD_MAX_ATTEMPTS = 3
+FORGOT_PASSWORD_BLOCK_TIME = 900
 
 def check_rate_limit(client_ip: str, redis_client: redis.Redis, endpoint_prefix: str = CLIENT_LOGIN_PREFIX):
     key = f"{endpoint_prefix}{client_ip}"
@@ -105,3 +110,27 @@ def record_faculty_failed_attempt(client_ip: str, redis_client: redis.Redis):
 
 def get_faculty_remaining_attempts(client_ip: str, redis_client: redis.Redis):
     return get_remaining_attempts(client_ip, redis_client, FACULTY_LOGIN_PREFIX)
+
+def check_forgot_password_rate_limit(client_ip: str, redis_client: redis.Redis):
+    key = f"{FORGOT_PASSWORD_PREFIX}{client_ip}"
+    attempts = redis_client.get(key)
+    
+    if attempts:
+        attempts = int(attempts)
+        if attempts >= FORGOT_PASSWORD_MAX_ATTEMPTS:
+            ttl = redis_client.ttl(key)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many password reset attempts. Try again in {ttl} seconds."
+            )
+
+def record_forgot_password_failed_attempt(client_ip: str, redis_client: redis.Redis):
+    return record_failed_attempt_redis(client_ip, redis_client, FORGOT_PASSWORD_PREFIX)
+
+def get_forgot_password_remaining_attempts(client_ip: str, redis_client: redis.Redis):
+    return get_remaining_attempts(client_ip, redis_client, FORGOT_PASSWORD_PREFIX)
+
+def reset_forgot_password_attempts(client_ip: str, redis_client: redis.Redis):
+    key = f"{FORGOT_PASSWORD_PREFIX}{client_ip}"
+    deleted = redis_client.delete(key)
+    print(f"[reset_failed_attempts] Deleted {key}, result: {deleted}")

@@ -4,6 +4,8 @@ import { Slide, ToastContainer } from 'react-toastify';
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import ProtectedRoute from "./components/protectRoute";
 import PageNotFound from "./components/PageFourOFour";
+import ForgotPassword from './components/ForgotPassword';
+import ResetPasswordPage from './components/reset-password';
 
 const Login = lazy(() => import('./components/login'));
 const Register = lazy(() => import('./components/register'));
@@ -27,6 +29,8 @@ const App = () => {
               }
             />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="*" element={<PageNotFound />} />
           </Routes>
         </BrowserRouter>
