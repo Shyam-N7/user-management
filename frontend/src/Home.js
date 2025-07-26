@@ -80,7 +80,6 @@ function Home() {
             if (Array.isArray(response.data)) {
                 setUsers(response.data);
             } else if (response.data && Array.isArray(response.data.users)) {
-                // If API wraps users inside an object
                 setUsers(response.data.users);
             } else {
                 console.error("Unexpected API response format", response.data);
@@ -305,7 +304,7 @@ function Home() {
     const handleLogout = async () => {
         try {
 
-            await fetch("http://localhost:8000/api/logout", {
+            await fetch("https://user-management-wucu.onrender.com/api/logout", {
                 method: "POST",
                 credentials: "include",
             });
