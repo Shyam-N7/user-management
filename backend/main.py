@@ -478,7 +478,6 @@ def reset_password(reset_data: schemas.ResetPassword, request: Request, db: Sess
             
         except HTTPException as auth_error:
             print(f"[RESET_PASSWORD] Process failed for IP: {client_ip} - {auth_error.detail}")
-            rate_limit.record_client_failed_attempt(client_ip, r)
             remaining = rate_limit.get_client_remaining_attempts(client_ip, r)
             
             raise HTTPException(
