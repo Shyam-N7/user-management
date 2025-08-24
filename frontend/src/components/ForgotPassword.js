@@ -25,11 +25,13 @@ const ForgotPassword = () => {
 
         if (!email.trim()) {
             setError('Email is required');
+            toast.warn('Email is required');
             return;
         }
 
         if (!validateEmail(email)) {
             setError('Please enter a valid email address');
+            toast.warn('Please enter a valid email address');
             return;
         }
 
@@ -56,6 +58,7 @@ const ForgotPassword = () => {
 
         } catch (err) {
             setError(err.message);
+            toast.error(err.message);
         } finally {
             setLoading(false);
         }

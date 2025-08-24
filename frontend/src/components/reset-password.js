@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 const ResetPasswordPage = () => {
   const [searchParams] = useSearchParams();
@@ -27,11 +28,13 @@ const ResetPasswordPage = () => {
     
     if (formData.new_password !== formData.confirm_password) {
       setError('Passwords do not match');
+      toast.error('Passwords do not match');
       return;
     }
 
     if (formData.new_password.length < 8) {
       setError('Password must be at least 8 characters long');
+      toast.warn('Password must be at least 8 characters long');
       return;
     }
 
