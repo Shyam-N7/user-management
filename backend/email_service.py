@@ -8,6 +8,17 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 import logging
 from datetime import datetime
+import pytz
+
+# Current time in UTC
+utc_now = datetime.now(pytz.utc)
+
+# Convert to IST
+ist = pytz.timezone('Asia/Kolkata')
+ist_now = utc_now.astimezone(ist)
+
+# Format the time
+formatted_time = ist_now.strftime('%B %d, %Y at %I:%M %p IST')
 
 load_dotenv()
 
@@ -281,7 +292,7 @@ def send_password_change_confirmation(to_email: str, first_name: str):
                         <strong>Success!</strong> Your password has been changed successfully.
                     </div>
                     
-                    <p>Your account password was updated on {datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')}.</p>
+                    <p>Your account password was updated on {formatted_time}.</p>
                     
                     <p>If you did not make this change, please contact our support team immediately.</p>
                     
